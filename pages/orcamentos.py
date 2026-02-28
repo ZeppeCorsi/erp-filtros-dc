@@ -11,6 +11,8 @@ if 'logado' not in st.session_state or not st.session_state.logado:
 st.set_page_config(page_title="Orçamentos | Filtros DC", layout="wide")
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+perfil_usuario = st.session_state.get('perfil', 'VENDEDOR').upper().strip()
+
 # Inicialização da Cesta de Orçamento
 if 'cesta_orc' not in st.session_state: st.session_state.cesta_orc = []
 if 'idx_o' not in st.session_state: st.session_state.idx_o = 0
@@ -20,12 +22,14 @@ URL_C = f"https://docs.google.com/spreadsheets/d/{ID_P}/gviz/tq?tqx=out:csv&shee
 URL_P = f"https://docs.google.com/spreadsheets/d/{ID_P}/gviz/tq?tqx=out:csv&sheet=Produtos"
 
 def limpar_colunas(df):
+    # Remove aspas e espaços dos nomes das colunas e coloca em MAIÚSCULO
     df.columns = [str(c).replace('"', '').strip().upper() for c in df.columns]
     return df
 
 @st.cache_data(ttl=2)
 def carregar():
     try:
+        # Lemos os CSVs diretamente
         c = pd.read_csv(URL_C)
         p = pd.read_csv(URL_P)
         return limpar_colunas(c), limpar_colunas(p)
@@ -42,44 +46,68 @@ st.subheader("1. Identificação do Cliente")
 c_b, c_l = st.columns([3, 1])
 busca = c_b.text_input("Buscar cliente por nome", placeholder="Ex: HOTEL")
 
-col_nome_cli = next((c for c in df_cli.columns if 'NOME' in c), None)
-
-if col_nome_cli and not df_cli.empty:
-    lista_nomes = df_cli[col_nome_cli].dropna().sort_values().tolist()
+# Forçamos a busca pela coluna exata 'NOME'
+if 'NOME REDUZIDO' in df_cli.columns:
+    # Criamos a lista garantindo que sejam apenas os nomes (texto)
+    lista_nomes = df_cli['NOME REDUZIDO'].astype(str).unique().tolist()
+    lista_nomes = sorted([n for n in lista_nomes if n not in ['nan', 'None', '0', '1']])
     
     if c_l.button("🔍 Buscar"):
-        match = [n for n in lista_nomes if busca.upper() in str(n).upper()]
-        if match: st.session_state.idx_o = lista_nomes.index(match[0])
-        else: st.warning("Não encontrado.")
+        # Filtra a lista pelo que foi digitado
+        match = [n for n in lista_nomes if busca.upper() in n.upper()]
+        if match: 
+            st.session_state.idx_o = lista_nomes.index(match[0])
+            st.rerun() # Força a atualização para selecionar o nome encontrado
+        else: 
+            st.warning("Cliente não encontrado.")
 
     col1, col2 = st.columns([3, 1])
-    cliente_orc = col1.selectbox("Confirme o Cliente", options=lista_nomes, index=st.session_state.idx_o)
+    
+    # IMPORTANTE: O selectbox usa a lista_nomes que só tem texto agora
+    cliente_orc = col1.selectbox(
+        "Confirme o Cliente", 
+        options=lista_nomes, 
+        index=st.session_state.idx_o if st.session_state.idx_o < len(lista_nomes) else 0
+    )
     validade_orc = col2.date_input("Válido até", datetime.now(), format="DD/MM/YYYY")
 else:
-    st.error("Dados de clientes não carregados.")
+    # Se não achar 'NOME', ele mostra as colunas disponíveis para você conferir
+    st.error(f"Coluna 'NOME' não encontrada. Colunas disponíveis: {list(df_cli.columns)}")
     st.stop()
-
-st.divider()
 
 # --- 2. PRODUTOS COM DETALHES ---
 st.subheader("2. Itens do Orçamento")
-col_prod = next((c for c in df_prod.columns if 'DESCRI' in c or 'PRODUTO' in c), None)
-col_preco = next((c for c in df_prod.columns if 'LISTA' in c or 'VALOR' in c), None)
+
+# AJUSTE 2: Forçamos a busca pelas colunas exatas que estão no seu arquivo de Produtos
+# No seu Produtos.py as colunas são 'NOME' e 'PRECO'
+col_prod = "NOME" if "NOME" in df_prod.columns else next((c for c in df_prod.columns if 'DESCRI' in c or 'PRODUTO' in c), None)
+col_preco = "PRECO" if "PRECO" in df_prod.columns else next((c for c in df_prod.columns if 'LISTA' in c or 'VALOR' in c), None)
 
 if col_prod and col_preco:
     with st.container(border=True):
         c3, c4, c5 = st.columns([2, 1, 1])
-        prod_sel = c3.selectbox("Produto", options=df_prod[col_prod].unique())
         
-        p_bruto = df_prod[df_prod[col_prod] == prod_sel][col_preco].values[0]
-        if isinstance(p_bruto, str): p_bruto = p_bruto.replace('.', '').replace(',', '.')
-        preco_unit = float(p_bruto) if p_bruto else 0.0
+        # Pegamos a lista de nomes de produtos
+        lista_prods = df_prod[col_prod].dropna().unique().tolist()
+        prod_sel = c3.selectbox("Produto", options=lista_prods)
+        
+        # Pegamos o preço bruto
+        linha_prod = df_prod[df_prod[col_prod] == prod_sel]
+        p_bruto = linha_prod[col_preco].values[0] if not linha_prod.empty else 0.0
+        
+        # Tratamento de número se vier como texto (Ex: 1.500,00)
+        if isinstance(p_bruto, str): 
+            p_bruto = p_bruto.replace('.', '').replace(',', '.')
+        
+        try:
+            preco_unit = float(p_bruto)
+        except:
+            preco_unit = 0.0
 
         qtd = c4.number_input("QTD", min_value=1, value=1)
         valor_u = c5.number_input("Preço Unit (R$)", min_value=0.0, value=preco_unit, format="%.2f")
         
-        # ESPAÇO 1: DETALHES ESPECÍFICOS DO ITEM
-        detalhes_item = st.text_area("🔧 Detalhes Técnicos deste Item", placeholder="Ex: Material, medidas, conexões específicas...")
+        detalhes_item = st.text_area("🔧 Detalhes Técnicos deste Item", placeholder="Ex: Material, conexões...")
 
         if st.button("➕ ADICIONAR AO ORÇAMENTO", use_container_width=True):
             st.session_state.cesta_orc.append({
@@ -90,6 +118,8 @@ if col_prod and col_preco:
                 "TOTAL": qtd * valor_u
             })
             st.rerun()
+else:
+    st.error(f"Erro: Colunas de produto não identificadas. Colunas atuais: {list(df_prod.columns)}")
 
 # --- 3. RESUMO E GRAVAÇÃO ---
 if st.session_state.cesta_orc:
@@ -102,7 +132,6 @@ if st.session_state.cesta_orc:
                 cols[0].caption(f"Especificações: {item['DETALHES']}")
             cols[0].write(f"R$ {item['UNIT']:,.2f} x {item['QTD']} = **R$ {item['TOTAL']:,.2f}**")
             
-            # Botões + e - para ajuste rápido
             if cols[1].button("➖", key=f"mo_{i}"):
                 if item['QTD'] > 1:
                     st.session_state.cesta_orc[i]['QTD'] -= 1
@@ -120,15 +149,13 @@ if st.session_state.cesta_orc:
     total_geral = sum(it['TOTAL'] for it in st.session_state.cesta_orc)
     st.info(f"#### 💰 VALOR TOTAL: R$ {total_geral:,.2f}")
     
-    # ESPAÇO 2: CONDIÇÕES GERAIS DO ORÇAMENTO
-    obs_gerais = st.text_area("📝 Condições Gerais (Pagamento, Prazo de Entrega, Frete)", 
-                             "PAGAMENTO: 30 DIAS | ENTREGA: 05 DIAS ÚTEIS | FRETE: FOB").upper()
+    obs_gerais = st.text_area("📝 Condições Gerais", "PAGAMENTO: 30 DIAS | ENTREGA: 05 DIAS ÚTEIS | FRETE: FOB").upper()
 
-    # ... (mantenha o restante do código igual até o botão de salvar)
-
-if st.button("💾 SALVAR ORÇAMENTO NA PLANILHA", use_container_width=True, type="primary"):
+    if st.button("💾 SALVAR ORÇAMENTO NA PLANILHA", use_container_width=True, type="primary"):
         try:
-            # 1. Lê a planilha - Forçamos a limpeza de dados vazios
+            # AJUSTE 3: Pegamos o nome do usuário logado do session_state
+            vendedor = st.session_state.get('usuario', 'SISTEMA')
+            
             df_atual = conn.read(worksheet="Orcamentos", ttl=0).dropna(how='all')
             
             novas_linhas = []
@@ -141,17 +168,13 @@ if st.button("💾 SALVAR ORÇAMENTO NA PLANILHA", use_container_width=True, typ
                     "QT": it["QTD"],
                     "VALOR UNITARIO": it["UNIT"],
                     "VALOR TOTAL": it["TOTAL"],
-                    "VENDEDOR": st.session_state.usuario_atual,
+                    "VENDEDOR": vendedor,
                     "CONDICOES GERAIS": obs_gerais,
                     "DETALHES": it["DETALHES"]
                 })
             
             df_novos = pd.DataFrame(novas_linhas)
-            
-            # 2. Unimos apenas as colunas que você tem na planilha (A até J)
             df_final = pd.concat([df_atual, df_novos], ignore_index=True)
-            
-            # 3. Gravação direta na aba
             conn.update(worksheet="Orcamentos", data=df_final)
             
             st.success("✅ ORÇAMENTO SALVO!")
@@ -160,4 +183,6 @@ if st.button("💾 SALVAR ORÇAMENTO NA PLANILHA", use_container_width=True, typ
             st.rerun()
             
         except Exception as e:
-            st.error(f"Erro técnico: {e}")
+            st.error(f"Erro técnico ao salvar: {e}")
+
+st.sidebar.image("LOGO Horizontal.jpg", use_container_width=True)
