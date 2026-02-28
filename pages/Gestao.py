@@ -13,13 +13,12 @@ if 'logado' not in st.session_state or not st.session_state.logado:
 st.set_page_config(page_title="Gestão | Filtros DC", layout="wide")
 st.sidebar.image("LOGO Horizontal.jpg", use_container_width=True)
 
-# URL DA PLANILHA (A mesma que usamos nas outras páginas)
+# URL DA PLANILHA
 ID_P = "1e4OxEVcNSdvi0NehhTgt0zvWK9ncAgGQa1E6WAEgFE8"
 URL_VENDAS = f"https://docs.google.com/spreadsheets/d/{ID_P}/gviz/tq?tqx=out:csv&sheet=Vendas"
 
 def carregar_vendas_gsheets():
     try:
-        # Lendo via link direto CSV para evitar o erro de "Spreadsheet must be specified"
         df = pd.read_csv(URL_VENDAS)
         df.columns = [str(c).strip().upper() for c in df.columns]
         
@@ -57,17 +56,20 @@ with tab_estudo:
         with c1: dt_ini = st.date_input("Início:", value=date(2024, 1, 1), format="DD/MM/YYYY")
         with c2: dt_fim = st.date_input("Fim:", value=date.today(), format="DD/MM/YYYY")
 
+        # Filtro Global por Data
         df_periodo = df_vendas[(df_vendas['Data_DT'].dt.date >= dt_ini) & 
                                (df_vendas['Data_DT'].dt.date <= dt_fim)].copy()
 
         if not df_periodo.empty:
+            # --- GRÁFICOS ---
             st.markdown("---")
             col_graf1, col_graf2 = st.columns(2)
             
             with col_graf1:
                 st.subheader("🏆 Top 10 Clientes (Faturamento)")
                 top_fat = df_periodo.groupby('CLIENTE')['Valor_Num'].sum().nlargest(10).reset_index()
-                fig1 = px.bar(top_fat, x='CLIENTE', y='Valor_Num', color='Valor_Num', template="plotly_white")
+                fig1 = px.bar(top_fat, x='CLIENTE', y='Valor_Num', color='Valor_Num', 
+                              labels={'Valor_Num': 'Faturamento (R$)'}, template="plotly_white")
                 st.plotly_chart(fig1, use_container_width=True)
 
             with col_graf2:
@@ -77,9 +79,32 @@ with tab_estudo:
                 fig2 = px.pie(top_freq, names='CLIENTE', values='PEDIDOS', hole=0.3)
                 st.plotly_chart(fig2, use_container_width=True)
 
+            # --- NOVO: SELEÇÃO ESPECÍFICA E SOMATÓRIA ---
             st.divider()
-            st.subheader("🔍 Extrato Detalhado")
-            st.dataframe(df_periodo[['DATA', 'CLIENTE', 'PRODUTO', 'TOTAL', 'VENDEDOR']], use_container_width=True, hide_index=True)
+            st.subheader("🔍 Detalhamento por Cliente")
+            
+            lista_cli = sorted(df_periodo['CLIENTE'].dropna().unique().tolist())
+            cliente_sel = st.selectbox("Selecione um cliente para filtrar a tabela e o total:", ["TODOS"] + lista_cli)
+            
+            # Filtra o DataFrame final baseado na seleção
+            df_final = df_periodo if cliente_sel == "TODOS" else df_periodo[df_periodo['CLIENTE'] == cliente_sel]
+
+            # --- MÉTRICAS EM DESTAQUE ---
+            total_fat = df_final['Valor_Num'].sum()
+            total_pedidos = len(df_final)
+            
+            m1, m2, m3 = st.columns(3)
+            # Formatação R$ 1.234,56
+            valor_formatado = f"R$ {total_fat:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            
+            m1.metric(f"Faturamento ({cliente_sel})", valor_formatado)
+            m2.metric("Qtd. de Pedidos", total_pedidos)
+            m3.metric("Ticket Médio", f"R$ {(total_fat/total_pedidos if total_pedidos > 0 else 0):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+
+            # TABELA DETALHADA
+            st.dataframe(df_final[['DATA', 'CLIENTE', 'PRODUTO', 'TOTAL', 'VENDEDOR']], 
+                         use_container_width=True, hide_index=True)
+            
         else:
             st.warning("Nenhum dado encontrado para estas datas.")
     else:
