@@ -39,17 +39,38 @@ with aba1:
             df_filtrado = df_estoque[df_estoque.apply(lambda r: r.astype(str).str.contains(busca, case=False).any(), axis=1)]
         else:
             df_filtrado = df_estoque
+            
+        # 1. Pegar o perfil que foi definido no login (home.py)
+        # Note que usamos 'perfil' em minúsculo porque o Streamlit costuma padronizar
+        # Mas para garantir, vamos testar se ele existe
+        perfil_usuario = st.session_state.get('perfil', 'VISITANTE').upper().strip()
 
-        # Exibição com destaque para quantidade
-        st.dataframe(
-            df_filtrado, 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "PRECO": st.column_config.NumberColumn("Preço Venda", format="R$ %.2f"),
-                "ESTOQUE": st.column_config.NumberColumn("Qtd. Atual")
-            }
-        )
+        # 2. Lista de colunas que só o ADM vê
+        colunas_privadas = ["Custo total", "Markup"]
+
+        # 3. Lógica de decisão
+        if perfil_usuario == "ADM":
+            df_exibicao = df_estoque
+            st.success(f"🔓 Modo Administrador: Exibindo custos e markup.")
+        else:
+            # Se não for ADM, remove as colunas sensíveis
+            df_exibicao = df_estoque.drop(columns=[c for c in colunas_privadas if c in df_estoque.columns])
+            st.info("ℹ️ Modo Vendedor: Informações de custo ocultas.")
+
+        # 4. Exibição da Tabela
+        st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+        
+
+        # # Exibição com destaque para quantidade
+        # st.dataframe(
+        #     df_filtrado, 
+        #     use_container_width=True, 
+        #     hide_index=True,
+        #     column_config={
+        #         "PRECO": st.column_config.NumberColumn("Preço Venda", format="R$ %.2f"),
+        #         "ESTOQUE": st.column_config.NumberColumn("Qtd. Atual")
+        #     }
+        # )
         
         # Resumo rápido no rodapé da tabela
         total_itens = len(df_filtrado)
