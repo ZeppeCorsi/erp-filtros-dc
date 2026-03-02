@@ -10,126 +10,121 @@ if 'logado' not in st.session_state or not st.session_state.logado:
 st.set_page_config(page_title="Estoque | Filtros DC", layout="wide")
 
 # 2. CONFIGURAÇÃO DE CONEXÃO
-ID_PLANILHA = "1e4OxEVcNSdvi0NehhTgt0zvWK9ncAgGQa1E6WAEgFE8"
-# Usando o nome da aba como 'Produtos' (verifique se é este o nome na sua planilha)
-URL_PRODUTOS = f"https://docs.google.com/spreadsheets/d/{ID_PLANILHA}/gviz/tq?tqx=out:csv&sheet=Produtos"
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def carregar_estoque():
-    try:
-        df = pd.read_csv(URL_PRODUTOS)
-        df.columns = [c.replace('"', '').strip() for c in df.columns]
-        return df
-    except:
-        return pd.DataFrame()
+def carregar_dados_limpos():
+    # Lendo direto via connection para garantir compatibilidade com o update depois
+    df = conn.read(worksheet="Produtos", ttl=0)
+    # Limpeza profunda: nomes de colunas sem espaços e em maiúsculo
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    # Limpeza de dados: remove espaços de todas as células de texto
+    df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+    # Garante que CODIGO seja sempre string limpa
+    if 'CODIGO' in df.columns:
+        df['CODIGO'] = df['CODIGO'].astype(str).str.replace('.0', '', regex=False)
+    return df
 
 # --- INTERFACE ---
 st.title("📦 Controle de Estoque - Filtros DC")
+df_estoque = carregar_dados_limpos()
 
 aba1, aba2 = st.tabs(["📋 Saldo em Estoque", "➕ Cadastrar Novo Item"])
 
-df_estoque = carregar_estoque()
-
 with aba1:
     if not df_estoque.empty:
-        # Filtro de busca rápida
-        busca = st.text_input("🔍 Buscar produto por nome ou código...")
+        busca = st.text_input("🔍 Buscar produto...")
+        df_filtrado = df_estoque[df_estoque.apply(lambda r: r.astype(str).str.contains(busca, case=False).any(), axis=1)] if busca else df_estoque
         
-        if busca:
-            df_filtrado = df_estoque[df_estoque.apply(lambda r: r.astype(str).str.contains(busca, case=False).any(), axis=1)]
-        else:
-            df_filtrado = df_estoque
-            
-        # 1. Pegar o perfil que foi definido no login (home.py)
-        # Note que usamos 'perfil' em minúsculo porque o Streamlit costuma padronizar
-        # Mas para garantir, vamos testar se ele existe
-        perfil_usuario = st.session_state.get('perfil', 'VISITANTE').upper().strip()
-
-        # 2. Lista de colunas que só o ADM vê
-        colunas_privadas = ["Custo total", "Markup"]
-
-        # 3. Lógica de decisão
-        if perfil_usuario == "ADM":
-            df_exibicao = df_estoque
-            st.success(f"🔓 Modo Administrador: Exibindo custos e markup.")
-        else:
-            # Se não for ADM, remove as colunas sensíveis
-            df_exibicao = df_estoque.drop(columns=[c for c in colunas_privadas if c in df_estoque.columns])
-            st.info("ℹ️ Modo Vendedor: Informações de custo ocultas.")
-
-        # 4. Exibição da Tabela
-        st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+        # Lógica de perfil (ADM / VENDEDOR)
+        perfil = str(st.session_state.get('perfil', 'VENDEDOR')).upper()
+        col_ocultar = ["CUSTO TOTAL", "MARKUP"] if perfil != "ADM" else []
+        df_para_mostrar = df_filtrado.drop(columns=[c for c in col_ocultar if c in df_filtrado.columns])
         
-
-        # # Exibição com destaque para quantidade
-        # st.dataframe(
-        #     df_filtrado, 
-        #     use_container_width=True, 
-        #     hide_index=True,
-        #     column_config={
-        #         "PRECO": st.column_config.NumberColumn("Preço Venda", format="R$ %.2f"),
-        #         "ESTOQUE": st.column_config.NumberColumn("Qtd. Atual")
-        #     }
-        # )
-        
-        # Resumo rápido no rodapé da tabela
-        total_itens = len(df_filtrado)
-        st.caption(f"Exibindo {total_itens} itens no inventário.")
+        st.dataframe(df_para_mostrar, use_container_width=True, hide_index=True)
     else:
-        st.warning("Nenhum produto encontrado na aba 'Produtos'.")
+        st.warning("Planilha vazia ou não encontrada.")
 
-with aba2:
-    st.subheader("Entrada de Novo Produto")
+# --- CENTRAL DE MONTAGEM (CÓDIGO FINAL E INTEGRADO) ---
+st.markdown("---")
+st.header("🛠️ Central de Montagem de Kits")
+
+# 1. DEFINIÇÃO DAS RECEITAS (IDs como String)
+FORMULAS = {
+    "5001": {"3001": 6.3, "3002": 4.3, "3003": 4.3, "3004": 4.3, "3005": 6.3, "3006": 1.0},
+    "5002": {"3001": 10.2, "3002": 8.2, "3003": 8.2, "3004": 8.2, "3005": 8.2, "3006": 1.8},
+    "5003": {"3001": 19.0, "3002": 13.5, "3003": 13.5, "3004": 13.5, "3005": 18.0, "3006": 2.5},
+    "5004": {"3001": 26.5, "3002": 18.5, "3003": 18.5, "3004": 18.5, "3005": 25.5, "3006": 3.4},
+    "5005": {"3001": 57.0, "3002": 38.0, "3003": 38.0, "3004": 38.0, "3005": 53.0, "3006": 7.0},
+    "5006": {"3001": 120.0, "3002": 80.0, "3003": 80.0, "3004": 80.0, "3005": 120.0, "3006": 15.0}
+}
+
+# 2. PREPARAR LISTA DINÂMICA (CÓDIGO - NOME)
+opcoes_selectbox = {}
+for cod_f in FORMULAS.keys():
+    # Busca o nome no df_estoque que já foi carregado no início da sua página
+    match = df_estoque[df_estoque['CODIGO'] == str(cod_f)]
+    if not match.empty:
+        nome_completo = f"{cod_f} - {match['NOME'].values[0]}"
+        opcoes_selectbox[nome_completo] = cod_f
+    else:
+        opcoes_selectbox[f"{cod_f} - (Item não localizado)"] = cod_f
+
+# 3. INTERFACE DE USUÁRIO
+with st.container(border=True):
+    col_sel, col_qtd = st.columns([2, 1])
     
-    # Lógica de ID Automático (NR PRODUTO)
-    proximo_id = 1
-    if not df_estoque.empty:
-        col_id = df_estoque.columns[0] # Assume que a primeira coluna é o ID
-        ultimo_id = pd.to_numeric(df_estoque[col_id], errors='coerce').max()
-        if not pd.isna(ultimo_id):
-            proximo_id = int(ultimo_id + 1)
-
-    with st.form("form_produto", clear_on_submit=True):
-        st.info(f"🔢 Código do novo item: **{proximo_id}**")
-
-        col_nome, col_cat = st.columns([2, 1])
-        nome_produto = col_nome.text_input("Nome Curto (Ex: FC500) *")
-                
-        col1, col2 = st.columns([3, 1])
-        descricao = col1.text_input("Descrição do Produto (Ex: Filtro Cartucho 10') *")
-        unidade = col2.selectbox("Unidade", ["UN", "PC", "KG", "MT", "CJ"])
+    with col_sel:
+        label_escolhido = st.selectbox("Selecione o Kit para Montagem:", options=list(opcoes_selectbox.keys()))
+        # Recupera apenas o código (ex: "5001") para o processamento
+        id_final = opcoes_selectbox[label_escolhido]
         
-        col3, col4, col5 = st.columns(3)
-        estoque_inicial = col3.number_input("Quantidade Inicial em Estoque", min_value=0, value=0)
-        preco_venda = col4.number_input("Preço de Venda (R$)", min_value=0.0, format="%.2f")
-        categoria = col5.text_input("Categoria / Grupo")
+    with col_qtd:
+        qtd_montar = st.number_input("Quantidade de Kits:", min_value=1, value=1, step=1)
 
-        if st.form_submit_button("✅ Cadastrar no Estoque"):
-            if descricao:
-                try:
-                    df_base = conn.read(worksheet="Produtos", ttl=0)
-                    
-                    # Monta a nova linha (ajuste os nomes das colunas se necessário)
-                    novo_item = pd.DataFrame([{
-                        "CODIGO": proximo_id,
-                        "NOME": descricao.upper(), # Pode ser ajustado para receber um nome separado se necessário  
-                        "DESCRICAO": descricao.upper(),
-                        "UN": unidade,
-                        "ESTOQUE": estoque_inicial,
-                        "PRECO": preco_venda,
-                        "PESO": 0, # Pode ser ajustado para receber peso se necessário
-                        "CATEGORIA": categoria.upper()
-                    }])
-                    
-                    df_final = pd.concat([df_base, novo_item], ignore_index=True)
-                    conn.update(worksheet="Produtos", data=df_final)
-                    
-                    st.success(f"Produto {descricao} cadastrado com sucesso!")
-                    st.balloons()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao salvar: {e}")
+    if st.button("🚀 Confirmar Montagem e Atualizar Estoque"):
+        # Lemos a planilha em tempo real para evitar erros de saldo
+        df_atual = carregar_dados_limpos() 
+        df_atual['ESTOQUE'] = pd.to_numeric(df_atual['ESTOQUE'], errors='coerce').fillna(0)
+        
+        receita = FORMULAS[id_final]
+        pode_prosseguir = True
+        erros = []
+
+        # A. VALIDAÇÃO DE SEGURANÇA
+        for componente, proporcao in receita.items():
+            precisa = proporcao * qtd_montar
+            linha_estoque = df_atual[df_atual['CODIGO'] == str(componente)]
+            
+            if linha_estoque.empty:
+                erros.append(f"❌ Componente {componente} não encontrado no cadastro!")
+                pode_prosseguir = False
             else:
-                st.error("A descrição do produto é obrigatória.")
+                saldo = linha_estoque['ESTOQUE'].values[0]
+                if saldo < precisa:
+                    erros.append(f"⚠️ {componente}: Precisa de {precisa:.2f}, mas o saldo é {saldo:.2f}")
+                    pode_prosseguir = False
 
+        if not pode_prosseguir:
+            for e in erros: st.error(e)
+        else:
+            # B. CÁLCULO MATEMÁTICO
+            try:
+                # 1. Baixa os componentes (insumos)
+                for componente, proporcao in receita.items():
+                    df_atual.loc[df_atual['CODIGO'] == str(componente), 'ESTOQUE'] -= (proporcao * qtd_montar)
+                
+                # 2. Adiciona o produto acabado (kit)
+                df_atual.loc[df_atual['CODIGO'] == str(id_final), 'ESTOQUE'] += qtd_montar
+                
+                # C. GRAVAÇÃO NO GOOGLE SHEETS
+                conn.update(worksheet="Produtos", data=df_atual)
+                
+                st.success(f"✅ Montagem do kit {label_escolhido} finalizada!")
+                st.balloons()
+                st.rerun()
+                
+            except Exception as ex:
+                st.error(f"Erro ao processar montagem: {ex}")
+
+# Rodapé da Sidebar
 st.sidebar.image("LOGO Horizontal.jpg", use_container_width=True)
