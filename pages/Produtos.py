@@ -11,7 +11,7 @@ if 'logado' not in st.session_state or not st.session_state.logado:
     st.stop()
 
 # 3. CONEXÃO (ID Mestre da sua planilha)
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1e4OxEVcNSdvi0NehhTgt0zvWK9ncAgGQa1E6WAEgFE8"
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1e4OxEVcNSdvi0NehhTgt0zvWK9ncAgGQa1E6WAEgFE8/edit?gid=1867758806#gid=1867758806"
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def carregar_dados_limpos():
