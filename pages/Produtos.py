@@ -2,6 +2,19 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 
+# No topo do arquivo Produtos.py
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1e4OxEVcNSdvi0NehhTgt0zvWK9ncAgGQa1E6WAEgFE8/edit?gid=1867758806#gid=1867758806"
+
+def carregar_dados_limpos():
+    # Forçamos a URL aqui para evitar o erro "Spreadsheet must be specified"
+    df = conn.read(spreadsheet=URL_PLANILHA, worksheet="Produtos", ttl=0)
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+    if 'CODIGO' in df.columns:
+        df['CODIGO'] = df['CODIGO'].astype(str).str.replace('.0', '', regex=False)
+    return df
+
+
 # 1. SEGURANÇA
 if 'logado' not in st.session_state or not st.session_state.logado:
     st.error("🚫 Acesso negado! Faça login na Home.")
