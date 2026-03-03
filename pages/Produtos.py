@@ -6,13 +6,23 @@ from streamlit_gsheets import GSheetsConnection
 URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1e4OxEVcNSdvi0NehhTgt0zvWK9ncAgGQa1E6WAEgFE8/edit?gid=1867758806#gid=1867758806"
 
 def carregar_dados_limpos():
-    # Forçamos a URL aqui para evitar o erro "Spreadsheet must be specified"
-    df = conn.read(spreadsheet=URL_PLANILHA, worksheet="Produtos", ttl=0)
-    df.columns = [str(c).strip().upper() for c in df.columns]
-    df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
-    if 'CODIGO' in df.columns:
-        df['CODIGO'] = df['CODIGO'].astype(str).str.replace('.0', '', regex=False)
-    return df
+    try:
+        # IMPORTANTE: Não use a URL direta do CSV aqui dentro. 
+        # Use o comando puro da conexão que lê dos Secrets.
+        df = conn.read(worksheet="Produtos", ttl=0)
+        
+        # Limpeza total
+        df.columns = [str(c).strip().upper() for c in df.columns]
+        df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+        
+        if 'CODIGO' in df.columns:
+            # Remove o .0 que o pandas as vezes coloca em números
+            df['CODIGO'] = df['CODIGO'].astype(str).str.replace('.0', '', regex=False)
+            
+        return df
+    except Exception as e:
+        st.error(f"Erro de Conexão: Certifique-se de que os Secrets estão configurados no Streamlit Cloud. Erro: {e}")
+        return pd.DataFrame()
 
 
 # 1. SEGURANÇA
