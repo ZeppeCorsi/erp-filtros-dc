@@ -216,19 +216,28 @@ if st.session_state.cesta_orc:
     obs_gerais = st.text_area("📝 Condições Gerais", "PAGAMENTO: 30 DIAS | ENTREGA: 05 DIAS ÚTEIS | FRETE: FOB").upper()
 
     # --- INSERIR O BLOCO DO PDF AQUI (Entre a 153 e 154) ---
+    # --- INSERIR O BLOCO DO PDF AQUI ---
     try:
-        pdf_bytes = gerar_pdf_orcamento(
+        # 1. Gera o conteúdo bruto (bytearray)
+        pdf_bruto = gerar_pdf_orcamento(
             cliente_orc, validade_orc, st.session_state.cesta_orc, 
             total_geral, obs_gerais, st.session_state.get('usuario', 'SISTEMA')
         )
+        
+        # 2. O SEGREDO: Converte o bytearray em um formato que o botão entende (bytes)
+        pdf_final = bytes(pdf_bruto)
 
+        # 3. Botão de download atualizado
         st.download_button(
             label="📥 BAIXAR ORÇAMENTO EM PDF",
-            data=pdf_bytes,
+            data=pdf_final,
             file_name=f"Orcamento_{cliente_orc}_{datetime.now().strftime('%Y%m%d')}.pdf",
             mime="application/pdf",
             use_container_width=True
         )
+        
+    except Exception as e:
+        st.error(f"Erro ao gerar visualização do PDF: {e}")
     except Exception as e:
         st.error(f"Erro ao gerar visualização do PDF: {e}")
 
