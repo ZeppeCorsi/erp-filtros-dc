@@ -10,21 +10,23 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf = FPDF()
     pdf.add_page()
     
-    # --- 1. CABEÇALHO (Ajuste o nome do arquivo da logo aqui) ---
+    # --- 1. CABEÇALHO COM LOGO (Fundo Branco Puro) ---
     try:
-        pdf.image("LOGO_NOVA.jpg", x=10, y=8, w=45) # <-- Troque aqui o nome da imagem
+        # Usando o nome exato do arquivo que você enviou
+        pdf.image("LOGO Fundo Branco Puro.png", x=10, y=8, w=50) 
     except:
         pdf.set_font("Arial", "B", 15)
         pdf.text(10, 15, "FILTROS DC")
 
+    # Dados da Empresa
     pdf.set_font("Arial", "", 8)
     pdf.set_xy(130, 10)
-    pdf.multi_cell(70, 4, "Filtros DC Comercio Ltda.\nCNPJ 61.696.514/0001-18\n(11) 2592.0025\nfdcmasterfilter@outlook.com", align="R")
+    pdf.multi_cell(70, 4, "Filtros DC Comercio Ltda.\nCNPJ 61.696.514/0001-18\nRua Nicolau Zarvos, 161 – Jabaquara\n(11) 2592.0025 | www.masterfilter.com.br", align="R")
     
     pdf.ln(15)
     pdf.line(10, 32, 200, 32)
 
-    # --- 2. DADOS DO CLIENTE ---
+    # --- 2. DADOS DO CLIENTE E TÍTULO ---
     pdf.ln(5)
     pdf.set_font("Arial", "B", 10)
     pdf.cell(0, 5, f"DATA: {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
@@ -41,9 +43,9 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf.cell(0, 10, "PROPOSTA TÉCNICA E COMERCIAL", ln=True, align="C", fill=True)
     pdf.ln(5)
 
-    # --- 3. TABELA DE PRODUTOS (O que estava faltando) ---
+    # --- 3. TABELA DE PRODUTOS ---
     pdf.set_font("Arial", "B", 10)
-    pdf.cell(90, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
+    pdf.cell(90, 8, "Descrição / Especificações", border=1, fill=True)
     pdf.cell(20, 8, "Qtd", border=1, align="C", fill=True)
     pdf.cell(40, 8, "Unitário", border=1, align="C", fill=True)
     pdf.cell(40, 8, "Total", border=1, align="C", fill=True)
@@ -51,45 +53,49 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
 
     pdf.set_font("Arial", "", 9)
     for it in itens:
-        # Coluna Descrição (usa multi_cell para as especificações técnicas)
-        x_atual = pdf.get_x()
-        y_atual = pdf.get_y()
+        x_start = pdf.get_x()
+        y_start = pdf.get_y()
         
-        # O 'DETALHES' aqui já deve conter a especificação técnica que unimos antes
+        # Descrição com quebra de linha automática
         pdf.multi_cell(90, 5, f"{it['ITEM']}\n{it['DETALHES']}", border=1)
+        y_end = pdf.get_y()
+        altura_linha = y_end - y_start
         
-        # Voltamos para a posição ao lado para preencher o resto da linha
-        altura_celula = pdf.get_y() - y_atual
-        pdf.set_xy(x_atual + 90, y_atual)
+        # Preenchimento das colunas laterais acompanhando a altura
+        pdf.set_xy(x_start + 90, y_start)
+        pdf.cell(20, altura_linha, str(it['QTD']), border=1, align="C")
         
-        pdf.cell(20, altura_celula, str(it['QTD']), border=1, align="C")
-        
-        # Formatação Moeda BR
         u = f"R$ {it['UNIT']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         t = f"R$ {it['TOTAL']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         
-        pdf.cell(40, altura_celula, u, border=1, align="R")
-        pdf.cell(40, altura_celula, t, border=1, align="R")
+        pdf.cell(40, altura_linha, u, border=1, align="R")
+        pdf.cell(40, altura_linha, t, border=1, align="R")
         pdf.ln()
 
-    # --- 4. TOTAL E CONDIÇÕES ---
+    # --- 4. TOTAIS E OBS ---
     pdf.ln(5)
     pdf.set_font("Arial", "B", 11)
     tot_br = f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
     pdf.cell(150, 10, "VALOR TOTAL DA PROPOSTA:", align="R")
     pdf.cell(40, 10, tot_br, align="R")
     
-    pdf.ln(15)
+    pdf.ln(10)
     pdf.set_font("Arial", "B", 10)
     pdf.cell(0, 5, "CONDIÇÕES GERAIS:", ln=True)
     pdf.set_font("Arial", "", 9)
     pdf.multi_cell(0, 5, obs)
+
+    # --- 5. ASSINATURA CHIODO (Padrão para todos) ---
+    pdf.ln(10)
+    try:
+        # Centralizando a assinatura
+        pdf.image("Assinatura Chiodo.jpg", x=75, w=60) 
+    except:
+        pdf.ln(10)
+        pdf.cell(0, 5, "________________________________________________", ln=True, align="C")
     
-    # --- 5. ASSINATURA ---
-    pdf.ln(20)
     pdf.set_font("Arial", "B", 10)
-    pdf.cell(0, 5, "________________________________________________", ln=True, align="C")
-    pdf.cell(0, 5, f"{vendedor} - Filtros DC", ln=True, align="C")
+    pdf.cell(0, 5, f"Vendedor: {vendedor} - Filtros DC", ln=True, align="C")
 
     return pdf.output()
 
