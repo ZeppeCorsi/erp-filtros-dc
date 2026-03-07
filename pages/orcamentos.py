@@ -202,17 +202,24 @@ if st.session_state.cesta_orc:
                 st.rerun()
 
     total_geral = sum(it['TOTAL'] for it in st.session_state.cesta_orc)
-    st.info(f"#### 💰 VALOR TOTAL: R$ {total_geral:,.2f}")
+    st.info(f"#### 💰 VALOR TOTAL: R$ {total_geral:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
     
     obs_gerais = st.text_area("📝 Condições Gerais", "PAGAMENTO: 30 DIAS | ENTREGA: 05 DIAS ÚTEIS | FRETE: FOB").upper()
 
     # --- INSERIR O BLOCO DO PDF AQUI (Entre a 153 e 154) ---
     # --- INSERIR O BLOCO DO PDF AQUI ---
     try:
-        # 1. Gera o conteúdo bruto (bytearray)
+       # 1. Gera o conteúdo bruto (bytearray)
         pdf_bruto = gerar_pdf_orcamento(
-            cliente_orc, validade_orc, st.session_state.cesta_orc, 
-            total_geral, obs_gerais, st.session_state.get('usuario', 'SISTEMA')
+            cliente_orc, 
+            validade_orc, 
+            st.session_state.cesta_orc, 
+            total_geral, 
+            obs_gerais, 
+            st.session_state.get('usuario', 'SISTEMA'),
+            contato_orc,  # <--- 
+            email_orc,    # <--- 
+            tel_orc       # <--- 
         )
         
         # 2. O SEGREDO: Converte o bytearray em um formato que o botão entende (bytes)
