@@ -127,8 +127,7 @@ with tab_estudo:
         )
     } if col_valor_original else None
 )
-        st.dataframe(df_tabela, use_container_width=True, hide_index=True)
-        
+          
     else:
         st.warning("Nenhum dado encontrado para os filtros selecionados.")
 
