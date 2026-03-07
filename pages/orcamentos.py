@@ -23,7 +23,7 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf.multi_cell(60, 4, "Filtros DC Comercio Ltda.\nCNPJ 61.696.514/0001-18\n(11) 2592.0025\nfdcmasterfilter@outlook.com", align="R")
     
     pdf.ln(20)
-    pdf.draw_line(10, 32, 200, 32) # Linha divisória
+    pdf.line(10, 32, 200, 32) # Linha divisória
 
     # --- DADOS DO CLIENTE (Estilo Proposta de Engenharia) ---
     pdf.set_font("Arial", "B", 10)
