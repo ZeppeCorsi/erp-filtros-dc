@@ -6,64 +6,49 @@ from fpdf import FPDF
 import io
 from datetime import datetime
 
-def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor):
+def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato, email, tel):
     pdf = FPDF()
     pdf.add_page()
     
-    # Cabeçalho Profissional Filtros DC
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "FILTROS DC LTDA - PROPOSTA COMERCIAL", ln=True, align="C")
+    # --- CABEÇALHO COM LOGO ---
+    try:
+        pdf.image("LOGO Horizontal.jpg", x=10, y=8, w=45) # Ajuste o w (largura) se necessário
+    except:
+        pdf.set_font("Arial", "B", 15)
+        pdf.text(10, 15, "FILTROS DC")
+
+    # Dados da Empresa (Lado Direito)
+    pdf.set_font("Arial", "", 8)
+    pdf.set_xy(140, 10)
+    pdf.multi_cell(60, 4, "Filtros DC Comercio Ltda.\nCNPJ 61.696.514/0001-18\n(11) 2592.0025\nfdcmasterfilter@outlook.com", align="R")
     
+    pdf.ln(20)
+    pdf.draw_line(10, 32, 200, 32) # Linha divisória
+
+    # --- DADOS DO CLIENTE (Estilo Proposta de Engenharia) ---
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 10, f"DATA: {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
+    
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 7, f"Aos cuidados: {contato}", ln=True)
     pdf.set_font("Arial", "", 10)
-    data_hoje = datetime.now().strftime('%d/%m/%Y')
-    val_str = validade.strftime('%d/%m/%Y')
-    pdf.cell(0, 5, f"Data: {data_hoje} | Validade: {val_str}", ln=True, align="C")
-    pdf.ln(10)
-
-    # Identificação do Cliente
-    pdf.set_fill_color(240, 240, 240)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, f"CLIENTE: {cliente}", ln=True, fill=True)
+    pdf.cell(0, 6, f"Cliente: {cliente}", ln=True)
+    pdf.cell(0, 6, f"E-mail: {email} | Tel: {tel}", ln=True)
     pdf.ln(5)
 
-    # Tabela de Itens (Cabeçalho)
-    pdf.set_font("Arial", "B", 10)
-    pdf.cell(90, 8, "Produto/Servico", border=1)
-    pdf.cell(20, 8, "Qtd", border=1, align="C")
-    pdf.cell(40, 8, "Unitario", border=1, align="C")
-    pdf.cell(40, 8, "Total", border=1, align="C")
-    pdf.ln()
-
-    # Itens da Cesta
-    pdf.set_font("Arial", "", 9)
-    for it in itens:
-        pdf.cell(90, 8, str(it['ITEM'])[:45], border=1)
-        pdf.cell(20, 8, str(it['QTD']), border=1, align="C")
-        
-        # Formatação Brasileira no PDF
-        u = f"R$ {it['UNIT']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-        t = f"R$ {it['TOTAL']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-        
-        pdf.cell(40, 8, u, border=1, align="R")
-        pdf.cell(40, 8, t, border=1, align="R")
-        pdf.ln()
-
-    # Total e Observações
-    pdf.ln(5)
+    # --- CORPO DA PROPOSTA ---
     pdf.set_font("Arial", "B", 12)
-    tot_br = f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-    pdf.cell(150, 10, "VALOR TOTAL:", align="R")
-    pdf.cell(40, 10, tot_br, align="R")
-    
-    pdf.ln(15)
-    pdf.set_font("Arial", "B", 10)
-    pdf.cell(0, 5, "CONDICOES GERAIS:", ln=True)
-    pdf.set_font("Arial", "", 9)
-    pdf.multi_cell(0, 5, obs)
-    
-    pdf.ln(10)
-    pdf.cell(0, 5, f"Vendedor: {vendedor}", ln=True)
+    pdf.cell(0, 10, "PROPOSTA TECNICA E COMERCIAL", ln=True, align="C")
+    pdf.ln(5)
 
+    # ... (Aqui entra o código da tabela que já temos) ...
+
+    # --- ASSINATURA DINÂMICA (LOGIN) ---
+    pdf.ln(20)
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 5, "________________________________________________", ln=True, align="C")
+    pdf.cell(0, 5, f"{vendedor} - Filtros DC", ln=True, align="C")
+    
     return pdf.output()
 
 
@@ -109,6 +94,12 @@ st.title("📄 Novo Orçamento")
 st.subheader("1. Identificação do Cliente")
 c_b, c_l = st.columns([3, 1])
 busca = c_b.text_input("Buscar cliente por nome", placeholder="Ex: HOTEL")
+# Novos campos para preenchimento manual ou automático
+col_c1, col_c2, col_c3 = st.columns(3)
+with col_c1: contato_orc = st.text_input("Aos cuidados de (Nome):", placeholder="Sr. João")
+with col_c2: email_orc = st.text_input("E-mail de contato:")
+with col_c3: tel_orc = st.text_input("Telefone/WhatsApp:")
+
 
 # Forçamos a busca pela coluna exata 'NOME'
 if 'NOME REDUZIDO' in df_cli.columns:
@@ -235,7 +226,7 @@ if st.session_state.cesta_orc:
             mime="application/pdf",
             use_container_width=True
         )
-        
+
     except Exception as e:
         st.error(f"Erro ao gerar visualização do PDF: {e}")
     except Exception as e:
