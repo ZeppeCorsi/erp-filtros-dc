@@ -10,45 +10,87 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf = FPDF()
     pdf.add_page()
     
-    # --- CABEÇALHO COM LOGO ---
+    # --- 1. CABEÇALHO (Ajuste o nome do arquivo da logo aqui) ---
     try:
-        pdf.image("LOGO Horizontal.jpg", x=10, y=8, w=45) # Ajuste o w (largura) se necessário
+        pdf.image("LOGO_NOVA.jpg", x=10, y=8, w=45) # <-- Troque aqui o nome da imagem
     except:
         pdf.set_font("Arial", "B", 15)
         pdf.text(10, 15, "FILTROS DC")
 
-    # Dados da Empresa (Lado Direito)
     pdf.set_font("Arial", "", 8)
-    pdf.set_xy(140, 10)
-    pdf.multi_cell(60, 4, "Filtros DC Comercio Ltda.\nCNPJ 61.696.514/0001-18\n(11) 2592.0025\nfdcmasterfilter@outlook.com", align="R")
+    pdf.set_xy(130, 10)
+    pdf.multi_cell(70, 4, "Filtros DC Comercio Ltda.\nCNPJ 61.696.514/0001-18\n(11) 2592.0025\nfdcmasterfilter@outlook.com", align="R")
     
-    pdf.ln(20)
-    pdf.line(10, 32, 200, 32) # Linha divisória
+    pdf.ln(15)
+    pdf.line(10, 32, 200, 32)
 
-    # --- DADOS DO CLIENTE (Estilo Proposta de Engenharia) ---
+    # --- 2. DADOS DO CLIENTE ---
+    pdf.ln(5)
     pdf.set_font("Arial", "B", 10)
-    pdf.cell(0, 10, f"DATA: {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
+    pdf.cell(0, 5, f"DATA: {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
     
     pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 7, f"Aos cuidados: {contato}", ln=True)
+    pdf.cell(0, 7, f"Aos cuidados: {contato.upper()}", ln=True)
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 6, f"Cliente: {cliente}", ln=True)
     pdf.cell(0, 6, f"E-mail: {email} | Tel: {tel}", ln=True)
+    
     pdf.ln(5)
-
-    # --- CORPO DA PROPOSTA ---
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "PROPOSTA TECNICA E COMERCIAL", ln=True, align="C")
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 10, "PROPOSTA TÉCNICA E COMERCIAL", ln=True, align="C", fill=True)
     pdf.ln(5)
 
-    # ... (Aqui entra o código da tabela que já temos) ...
+    # --- 3. TABELA DE PRODUTOS (O que estava faltando) ---
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(90, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
+    pdf.cell(20, 8, "Qtd", border=1, align="C", fill=True)
+    pdf.cell(40, 8, "Unitário", border=1, align="C", fill=True)
+    pdf.cell(40, 8, "Total", border=1, align="C", fill=True)
+    pdf.ln()
 
-    # --- ASSINATURA DINÂMICA (LOGIN) ---
+    pdf.set_font("Arial", "", 9)
+    for it in itens:
+        # Coluna Descrição (usa multi_cell para as especificações técnicas)
+        x_atual = pdf.get_x()
+        y_atual = pdf.get_y()
+        
+        # O 'DETALHES' aqui já deve conter a especificação técnica que unimos antes
+        pdf.multi_cell(90, 5, f"{it['ITEM']}\n{it['DETALHES']}", border=1)
+        
+        # Voltamos para a posição ao lado para preencher o resto da linha
+        altura_celula = pdf.get_y() - y_atual
+        pdf.set_xy(x_atual + 90, y_atual)
+        
+        pdf.cell(20, altura_celula, str(it['QTD']), border=1, align="C")
+        
+        # Formatação Moeda BR
+        u = f"R$ {it['UNIT']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        t = f"R$ {it['TOTAL']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        
+        pdf.cell(40, altura_celula, u, border=1, align="R")
+        pdf.cell(40, altura_celula, t, border=1, align="R")
+        pdf.ln()
+
+    # --- 4. TOTAL E CONDIÇÕES ---
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 11)
+    tot_br = f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    pdf.cell(150, 10, "VALOR TOTAL DA PROPOSTA:", align="R")
+    pdf.cell(40, 10, tot_br, align="R")
+    
+    pdf.ln(15)
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 5, "CONDIÇÕES GERAIS:", ln=True)
+    pdf.set_font("Arial", "", 9)
+    pdf.multi_cell(0, 5, obs)
+    
+    # --- 5. ASSINATURA ---
     pdf.ln(20)
     pdf.set_font("Arial", "B", 10)
     pdf.cell(0, 5, "________________________________________________", ln=True, align="C")
     pdf.cell(0, 5, f"{vendedor} - Filtros DC", ln=True, align="C")
-    
+
     return pdf.output()
 
 
