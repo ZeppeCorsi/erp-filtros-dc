@@ -10,24 +10,22 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf = FPDF()
     pdf.add_page()
     
-    # --- FUNÇÃO INTERNA PARA LIMPAR TEXTO (Evita o erro da imagem d5ace5) ---
-    def limpar_texto(txt):
+    # Função para evitar erro de caracteres (Hífen longo, etc)
+    def clean(txt):
         if not txt: return ""
-        # Troca caracteres especiais problemáticos por versões simples
         return str(txt).replace('—', '-').replace('–', '-').replace('“', '"').replace('”', '"')
 
     # --- 1. CABEÇALHO ---
     try:
         pdf.image("LOGO Fundo Branco Puro.png", x=10, y=8, w=50)
     except:
-        pdf.set_font("Helvetica", "B", 15) # Helvetica é mais segura que Arial
+        pdf.set_font("Helvetica", "B", 15)
         pdf.text(10, 15, "FILTROS DC")
 
     pdf.set_font("Helvetica", "", 8)
     pdf.set_xy(130, 10)
-    # Limpamos o texto do cabeçalho também!
     end_dc = "Filtros DC Comercio Ltda.\nCNPJ 61.696.514/0001-18\nRua Nicolau Zarvos, 161 - Jabaquara\n(11) 2592.0025 | www.masterfilter.com.br"
-    pdf.multi_cell(70, 4, limpar_texto(end_dc), align="R")
+    pdf.multi_cell(70, 4, clean(end_dc), align="R")
     
     pdf.ln(15)
     pdf.line(10, 32, 200, 32)
@@ -38,33 +36,70 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf.cell(0, 5, f"DATA: {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
     
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 7, f"Aos cuidados: {limpar_texto(contato).upper()}", ln=True)
+    pdf.cell(0, 7, f"Aos cuidados: {clean(contato).upper()}", ln=True)
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 6, f"Cliente: {limpar_texto(cliente)}", ln=True)
-    pdf.cell(0, 6, f"E-mail: {limpar_texto(email)} | Tel: {limpar_texto(tel)}", ln=True)
+    pdf.cell(0, 6, f"Cliente: {clean(cliente)}", ln=True)
+    pdf.cell(0, 6, f"E-mail: {clean(email)} | Tel: {clean(tel)}", ln=True)
     
-    # ... (Restante do código da tabela, SEMPRE usando limpar_texto(variável)) ...
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 10, "PROPOSTA TÉCNICA E COMERCIAL", ln=True, align="C", fill=True)
+    pdf.ln(5)
 
+    # --- 3. TABELA DE PRODUTOS (Recuperada e Ampliada) ---
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(90, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
+    pdf.cell(15, 8, "Qtd", border=1, align="C", fill=True)
+    pdf.cell(42, 8, "Unitário", border=1, align="C", fill=True)
+    pdf.cell(43, 8, "Total", border=1, align="C", fill=True)
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 9)
     for it in itens:
         x_start = pdf.get_x()
         y_start = pdf.get_y()
         
-        # Limpando a descrição do item e detalhes
-        desc_limpa = limpar_texto(f"{it['ITEM']}\n{it['DETALHES']}")
-        pdf.multi_cell(90, 5, desc_limpa, border=1)
+        # Descrição com MultiCell para as especificações técnicas
+        pdf.multi_cell(90, 5, clean(f"{it['ITEM']}\n{it['DETALHES']}"), border=1)
+        y_end = pdf.get_y()
+        h_linha = y_end - y_start
         
-        # ... (restante do loop da tabela igual ao anterior) ...
+        # Colunas laterais
+        pdf.set_xy(x_start + 90, y_start)
+        pdf.cell(15, h_linha, str(it['QTD']), border=1, align="C")
+        
+        u = f"R$ {it['UNIT']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        t = f"R$ {it['TOTAL']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        
+        pdf.cell(42, h_linha, u, border=1, align="R")
+        pdf.cell(43, h_linha, t, border=1, align="R")
+        pdf.ln()
 
-    # --- 3. ASSINATURA CHIODO ---
+    # --- 4. TOTAL E CONDIÇÕES GERAIS ---
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 11)
+    tot_br = f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    pdf.cell(147, 10, "VALOR TOTAL DA PROPOSTA:", align="R")
+    pdf.cell(43, 10, tot_br, align="R", ln=True)
+    
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 5, "CONDIÇÕES GERAIS:", ln=True)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(0, 5, clean(obs)) # Aqui as condições que você sentiu falta!
+
+    # --- 5. ASSINATURA ---
     pdf.ln(10)
     try:
-        pdf.image("Assinatura Chiodo.jpg", x=75, w=60) 
+        # Centralizando a imagem da assinatura
+        pdf.image("Assinatura Chiodo.jpg", x=70, w=65) 
     except:
         pdf.ln(10)
         pdf.cell(0, 5, "________________________________________________", ln=True, align="C")
     
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 5, f"Vendedor: {limpar_texto(vendedor)} - Filtros DC", ln=True, align="C")
+    pdf.cell(0, 5, f"Vendedor: {clean(vendedor)} - Filtros DC", ln=True, align="C")
 
     return pdf.output()
 
