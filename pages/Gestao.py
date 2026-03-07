@@ -104,28 +104,34 @@ with tab_estudo:
                 fig2 = px.pie(top_freq, names='CLIENTE', values='PEDIDOS', hole=0.3)
                 st.plotly_chart(fig2, use_container_width=True)
 
-       # --- TABELA DETALHADA ---
+      # --- TABELA DETALHADA ---
         st.divider()
         st.subheader(f"🔍 Detalhamento: {cliente_sel}")
         
         # 1. Removendo colunas indesejadas
         colunas_remover = ["COMPRAS", "E PAGAMENTO", "DATA_DT", "VALOR_NUM"]
-        df_tabela = df_filtrado.drop(columns=[c for c in colunas_remover if c in df_filtrado.columns])
+        df_tabela = df_filtrado.drop(columns=[c for c in colunas_remover if c in df_filtrado.columns]).copy()
         
         # 2. Identifica a coluna de valor
         col_valor_original = next((c for c in df_tabela.columns if 'TOTAL' in c), None)
 
-        # 3. Exibição com formatação "Blindada" para o padrão brasileiro
+        if col_valor_original:
+            # 3. Formatação Manual (Garante R$ 0.000,00 independente do servidor)
+            def formatar_br(valor):
+                try:
+                    # Formata com milhar sendo vírgula e decimal ponto (padrão US)
+                    # Depois inverte para o padrão BR
+                    return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                except:
+                    return valor
+
+            df_tabela[col_valor_original] = df_tabela[col_valor_original].apply(formatar_br)
+
+        # 4. Exibição final (agora como texto, sem erro de placeholder)
         st.dataframe(
             df_tabela, 
             use_container_width=True, 
-            hide_index=True,
-            column_config={
-                col_valor_original: st.column_config.NumberColumn(
-                    "Valor Total (R$)",
-                    format="R$ %.,2f", # O segredo está na vírgula antes do ponto: %.,2f
-                )
-            } if col_valor_original else None
+            hide_index=True
         )
           
     else:
