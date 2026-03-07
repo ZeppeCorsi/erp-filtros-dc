@@ -104,29 +104,29 @@ with tab_estudo:
                 fig2 = px.pie(top_freq, names='CLIENTE', values='PEDIDOS', hole=0.3)
                 st.plotly_chart(fig2, use_container_width=True)
 
-        # --- TABELA DETALHADA (O que você pediu) ---
+       # --- TABELA DETALHADA ---
         st.divider()
         st.subheader(f"🔍 Detalhamento: {cliente_sel}")
         
-        # Removendo colunas indesejadas
+        # 1. Removendo colunas indesejadas
         colunas_remover = ["COMPRAS", "E PAGAMENTO", "DATA_DT", "VALOR_NUM"]
         df_tabela = df_filtrado.drop(columns=[c for c in colunas_remover if c in df_filtrado.columns])
         
-        # Identifica dinamicamente a coluna que tem o valor (geralmente 'TOTAL' ou similar)
+        # 2. Identifica a coluna de valor
         col_valor_original = next((c for c in df_tabela.columns if 'TOTAL' in c), None)
 
-       # Exibição com formaturamento brasileiro (Ponto para milhar e vírgula para decimal)
+        # 3. Exibição com formatação "Blindada" para o padrão brasileiro
         st.dataframe(
-    df_tabela, 
-    use_container_width=True, 
-    hide_index=True,
-    column_config={
-        col_valor_original: st.column_config.NumberColumn(
-            "Valor Total (R$)",
-            format="R$ %.2f",  # O Streamlit aplicará o separador de milhar automaticamente com base no local
+            df_tabela, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                col_valor_original: st.column_config.NumberColumn(
+                    "Valor Total (R$)",
+                    format="R$ %.,2f", # O segredo está na vírgula antes do ponto: %.,2f
+                )
+            } if col_valor_original else None
         )
-    } if col_valor_original else None
-)
           
     else:
         st.warning("Nenhum dado encontrado para os filtros selecionados.")
