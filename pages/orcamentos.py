@@ -47,6 +47,23 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf.cell(0, 10, "PROPOSTA TÉCNICA E COMERCIAL", ln=True, align="C", fill=True)
     pdf.ln(5)
 
+    # --- TÍTULO DA PROPOSTA ---
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 10, "PROPOSTA TÉCNICA E COMERCIAL", ln=True, align="C", fill=True)
+    
+    # --- NOVO: TEXTO DE APRESENTAÇÃO (36 ANOS) ---
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "", 10)
+    texto_intro = (
+        "Com 36 anos de experiência no mercado de filtragem industrial, a Filtros DC consolida-se pela "
+        "excelência técnica e compromisso com a qualidade. Apresentamos abaixo nossa proposta comercial "
+        "detalhada, desenvolvida sob medida para atender às necessidades específicas de sua operação."
+    )
+    pdf.multi_cell(0, 5, clean(texto_intro), align="J") # "J" para justificado
+    pdf.ln(5)
+
     # --- 3. TABELA DE PRODUTOS (Recuperada e Ampliada) ---
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(90, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
