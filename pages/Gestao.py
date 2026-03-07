@@ -112,6 +112,22 @@ with tab_estudo:
         colunas_remover = ["COMPRAS", "E PAGAMENTO", "DATA_DT", "VALOR_NUM"]
         df_tabela = df_filtrado.drop(columns=[c for c in colunas_remover if c in df_filtrado.columns])
         
+        # Identifica dinamicamente a coluna que tem o valor (geralmente 'TOTAL' ou similar)
+        col_valor_original = next((c for c in df_tabela.columns if 'TOTAL' in c), None)
+
+        # Exibição com formatação brasileira
+        st.dataframe(
+            df_tabela, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                col_valor_original: st.column_config.NumberColumn(
+                    "Valor Total (R$)",
+                    format="%.2f", # Aqui define as casas decimais
+                )
+            } if col_valor_original else None
+        )
+
         st.dataframe(df_tabela, use_container_width=True, hide_index=True)
         
     else:
