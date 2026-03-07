@@ -115,19 +115,18 @@ with tab_estudo:
         # Identifica dinamicamente a coluna que tem o valor (geralmente 'TOTAL' ou similar)
         col_valor_original = next((c for c in df_tabela.columns if 'TOTAL' in c), None)
 
-        # Exibição com formatação brasileira
+       # Exibição com formaturamento brasileiro (Ponto para milhar e vírgula para decimal)
         st.dataframe(
-            df_tabela, 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                col_valor_original: st.column_config.NumberColumn(
-                    "Valor Total (R$)",
-                    format="%.2f", # Aqui define as casas decimais
-                )
-            } if col_valor_original else None
+    df_tabela, 
+    use_container_width=True, 
+    hide_index=True,
+    column_config={
+        col_valor_original: st.column_config.NumberColumn(
+            "Valor Total (R$)",
+            format="R$ %.2f",  # O Streamlit aplicará o separador de milhar automaticamente com base no local
         )
-
+    } if col_valor_original else None
+)
         st.dataframe(df_tabela, use_container_width=True, hide_index=True)
         
     else:
