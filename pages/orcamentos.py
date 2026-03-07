@@ -2,6 +2,70 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
+from fpdf import FPDF
+import io
+from datetime import datetime
+
+def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Cabeçalho Profissional Filtros DC
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, "FILTROS DC LTDA - PROPOSTA COMERCIAL", ln=True, align="C")
+    
+    pdf.set_font("Arial", "", 10)
+    data_hoje = datetime.now().strftime('%d/%m/%Y')
+    val_str = validade.strftime('%d/%m/%Y')
+    pdf.cell(0, 5, f"Data: {data_hoje} | Validade: {val_str}", ln=True, align="C")
+    pdf.ln(10)
+
+    # Identificação do Cliente
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, f"CLIENTE: {cliente}", ln=True, fill=True)
+    pdf.ln(5)
+
+    # Tabela de Itens (Cabeçalho)
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(90, 8, "Produto/Servico", border=1)
+    pdf.cell(20, 8, "Qtd", border=1, align="C")
+    pdf.cell(40, 8, "Unitario", border=1, align="C")
+    pdf.cell(40, 8, "Total", border=1, align="C")
+    pdf.ln()
+
+    # Itens da Cesta
+    pdf.set_font("Arial", "", 9)
+    for it in itens:
+        pdf.cell(90, 8, str(it['ITEM'])[:45], border=1)
+        pdf.cell(20, 8, str(it['QTD']), border=1, align="C")
+        
+        # Formatação Brasileira no PDF
+        u = f"R$ {it['UNIT']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        t = f"R$ {it['TOTAL']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        
+        pdf.cell(40, 8, u, border=1, align="R")
+        pdf.cell(40, 8, t, border=1, align="R")
+        pdf.ln()
+
+    # Total e Observações
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 12)
+    tot_br = f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    pdf.cell(150, 10, "VALOR TOTAL:", align="R")
+    pdf.cell(40, 10, tot_br, align="R")
+    
+    pdf.ln(15)
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 5, "CONDICOES GERAIS:", ln=True)
+    pdf.set_font("Arial", "", 9)
+    pdf.multi_cell(0, 5, obs)
+    
+    pdf.ln(10)
+    pdf.cell(0, 5, f"Vendedor: {vendedor}", ln=True)
+
+    return pdf.output()
+
 
 # 1. SEGURANÇA
 if 'logado' not in st.session_state or not st.session_state.logado:
