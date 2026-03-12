@@ -39,7 +39,8 @@ def gerar_link_outlook(cliente, data_str, hora_str, servico, contato, obs):
         return "https://outlook.office.com/calendar/0/deeplink/compose?" + urllib.parse.urlencode(params)
     except:
         return "#"
-
+    
+    
 @st.cache_data(ttl=2)
 def carregar_clientes():
     try:
@@ -49,6 +50,36 @@ def carregar_clientes():
     except: return pd.DataFrame()
 
 df_clientes = carregar_clientes()
+
+@st.dialog("🔄 Reagendar Visita")
+def reagendar_dialog(indice, dados):
+    st.markdown(f"### Reagendamento: {dados['CLIENTE']}")
+    st.info(f"Horário atual: {dados['DATA_SERVICO']} às {dados['HORA']}")
+    
+    c1, c2 = st.columns(2)
+    nova_data = c1.date_input("Nova Data", value=datetime.now(), format="DD/MM/YYYY")
+    nova_hora = c2.time_input("Novo Horário", value=datetime.strptime("09:00", "%H:%M").time())
+    
+    motivo = st.text_area("Motivo do Reagendamento (será salvo nas observações)").upper()
+    
+    if st.button("💾 CONFIRMAR REAGENDAMENTO", use_container_width=True):
+        try:
+            # Lendo a base completa para atualizar a linha correta
+            df_full = conn.read(worksheet="Agendamentos", ttl=0)
+            
+            # Atualizando os campos
+            df_full.at[indice, 'DATA_SERVICO'] = nova_data.strftime("%d/%m/%Y")
+            df_full.at[indice, 'HORA'] = nova_hora.strftime("%H:%M")
+            
+            # Mantém a observação antiga e adiciona o motivo do reagendamento
+            obs_antiga = str(dados.get('OBS', '')) if str(dados.get('OBS', '')) != 'nan' else ""
+            df_full.at[indice, 'OBS'] = f"{obs_antiga} | REAGENDADO: {motivo}".strip(" | ")
+            
+            conn.update(worksheet="Agendamentos", data=df_full)
+            st.success("Calendário atualizado com sucesso!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao salvar: {e}")
 
 st.title("📅 Agenda de Serviços Filtros DC")
 
@@ -142,6 +173,18 @@ try:
                                 s['SERVICO'], s.get('CONTATO',''), s.get('OBS','')
                             )
                             st.link_button("📅 Outlook", url_out, use_container_width=True)
+
+                            # BOTÃO OUTLOOK
+                            url_out = gerar_link_outlook(
+                                s['CLIENTE'], s['DATA_SERVICO'], s['HORA'], 
+                                s['SERVICO'], s.get('CONTATO',''), s.get('OBS','')
+                            )
+                            st.link_button("📅 Outlook", url_out, use_container_width=True)
+
+                            # --- INCLUA ESTE BLOCO ABAIXO ---
+                            if st.button("🔄 Reagendar", key=f"reag_{_}", use_container_width=True):
+                                reagendar_dialog(_, s) 
+                            # -------------------------------
 
                             # OBSERVAÇÕES
                             if str(s.get('OBS','')) != 'nan' and s.get('OBS'):
