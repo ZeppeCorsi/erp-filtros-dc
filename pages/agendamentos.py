@@ -193,26 +193,42 @@ try:
                     
                     for _, s in servs_dia.iterrows():
                         with st.container(border=True):
+                            # --- LÓGICA DE STATUS VISUAL ---
+                            status_atual = str(s.get('STATUS', 'AGENDADO')).upper()
+                            
+                            if status_atual in ["FINALIZADO", "CONCLUÍDO"]:
+                                icone, cor = "🟢", "green"
+                            elif status_atual == "REAGENDADO":
+                                icone, cor = "🟡", "#B8860B"
+                            else:
+                                icone, cor = "🔵", "#1f77b4"
+
                             st.markdown(f"**{s['HORA']}**")
-                            st.markdown(f"<p style='font-size:12px; margin:0;'>👤 {s['CLIENTE']}</p>", unsafe_allow_html=True)
+                            
+                            # Exibição do Cliente com ícone dinâmico
+                            st.markdown(f"<p style='font-size:12px; margin:0; font-weight:bold; color:{cor};'>{icone} {s['CLIENTE']}</p>", unsafe_allow_html=True)
+                            
                             if str(s.get('CONTATO','')) != 'nan':
                                 st.markdown(f"<p style='font-size:11px; color:#0078D4; margin:0;'>📞 {s['CONTATO']}</p>", unsafe_allow_html=True)
+                            
                             st.caption(f"🛠️ {s['SERVICO']}")
                             
-                            # BOTÃO OUTLOOK
+                            # BOTÃO OUTLOOK (Sempre visível)
                             url_out = gerar_link_outlook(
                                 s['CLIENTE'], s['DATA_SERVICO'], s['HORA'], 
                                 s['SERVICO'], s.get('CONTATO',''), s.get('OBS','')
                             )
                             st.link_button("📅 Outlook", url_out, use_container_width=True)
 
-                            # BOTÃO REAGENDAR
-                            if st.button("🔄 Reagendar", key=f"reag_{_}", use_container_width=True):
-                                reagendar_dialog(_, s) 
-                            
-                            # BOTÃO FINALIZAR
-                            if st.button("✅ Finalizar", key=f"fin_{_}", use_container_width=True):
-                                finalizar_dialog(_, s)
+                            # BOTÕES DE AÇÃO (Somem se já estiver finalizado)
+                            if status_atual not in ["FINALIZADO", "CONCLUÍDO"]:
+                                if st.button("🔄 Reagendar", key=f"reag_{_}", use_container_width=True):
+                                    reagendar_dialog(_, s) 
+                                
+                                if st.button("✅ Finalizar", key=f"fin_{_}", use_container_width=True):
+                                    finalizar_dialog(_, s)
+                            else:
+                                st.markdown("<p style='text-align:center; font-size:11px; color:gray;'>✨ SERVIÇO CONCLUÍDO</p>", unsafe_allow_html=True)
                             
                             # OBSERVAÇÕES
                             if str(s.get('OBS','')) != 'nan' and s.get('OBS'):
