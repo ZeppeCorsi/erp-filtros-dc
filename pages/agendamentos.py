@@ -81,6 +81,38 @@ def reagendar_dialog(indice, dados):
         except Exception as e:
             st.error(f"Erro ao salvar: {e}")
 
+@st.dialog("✅ Finalizar Visita Técnica")
+def finalizar_dialog(indice, dados):
+    st.markdown(f"### Finalizando: {dados['CLIENTE']}")
+    detalhes = st.text_area("Relatório do Serviço Realizado", placeholder="Ex: Troca de elementos filtrantes e higienização concluída...").upper()
+    
+    lembrete = st.radio("Deseja criar um lembrete para a próxima visita?", ["Não", "Sim"], index=0)
+    
+    if st.button("💾 Salvar e Finalizar"):
+        try:
+            df_full = conn.read(worksheet="Agendamentos", ttl=0)
+            # Atualiza Status e Observações
+            df_full.at[indice, 'STATUS'] = "CONCLUÍDO"
+            obs_atual = str(dados.get('OBS', '')) if str(dados.get('OBS', '')) != 'nan' else ""
+            df_full.at[indice, 'OBS'] = f"{obs_atual} | FINALIZADO: {detalhes}".strip(" | ")
+            
+            conn.update(worksheet="Agendamentos", data=df_full)
+            
+            if lembrete == "Sim":
+                # Gera link para Outlook com lembrete (ex: daqui a 6 meses para troca de refil)
+                proxima_data = (datetime.now() + timedelta(days=180)).strftime("%d/%m/%Y")
+                corpo_email = f"Lembrete de nova visita para {dados['CLIENTE']}.\nÚltimo serviço: {detalhes}"
+                link_remind = gerar_link_outlook(dados['CLIENTE'], proxima_data, "09:00", "REVISÃO PERIÓDICA", dados.get('CONTATO',''), corpo_email)
+                
+                st.success("Visita finalizada! Clique abaixo para agendar o lembrete:")
+                st.link_button("⏰ Agendar Lembrete no Outlook", link_remind, use_container_width=True)
+                if st.button("Sair"): st.rerun()
+            else:
+                st.success("Visita finalizada com sucesso!")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao finalizar: {e}")
+
 st.title("📅 Agenda de Serviços Filtros DC")
 
 # --- NAVEGAÇÃO DO MÊS ---
@@ -174,18 +206,14 @@ try:
                             )
                             st.link_button("📅 Outlook", url_out, use_container_width=True)
 
-                            # BOTÃO OUTLOOK
-                            url_out = gerar_link_outlook(
-                                s['CLIENTE'], s['DATA_SERVICO'], s['HORA'], 
-                                s['SERVICO'], s.get('CONTATO',''), s.get('OBS','')
-                            )
-                            st.link_button("📅 Outlook", url_out, use_container_width=True)
-
-                            # --- INCLUA ESTE BLOCO ABAIXO ---
+                            # BOTÃO REAGENDAR
                             if st.button("🔄 Reagendar", key=f"reag_{_}", use_container_width=True):
                                 reagendar_dialog(_, s) 
-                            # -------------------------------
-
+                            
+                            # BOTÃO FINALIZAR
+                            if st.button("✅ Finalizar", key=f"fin_{_}", use_container_width=True):
+                                finalizar_dialog(_, s)
+                            
                             # OBSERVAÇÕES
                             if str(s.get('OBS','')) != 'nan' and s.get('OBS'):
                                 with st.expander("🔎 Obs"):
