@@ -25,43 +25,63 @@ def carregar_dados():
         st.error(f"Erro ao carregar: {e}")
         return pd.DataFrame()
 
-@st.dialog("📝 Editar Ficha do Cliente")
+@st.dialog("📝 Ficha Completa do Cliente")
 def editar_cliente_dialog(indice, dados):
-    st.write(f"Editando Registro: **{dados['NR CLIENTE']}**")
+    st.markdown(f"### Registro: {dados['NR CLIENTE']}")
     
-    # Campos que PODEM ser editados
+    # --- DADOS PRINCIPAIS (BLOQUEADOS) ---
     c1, c2 = st.columns(2)
-    novo_nome_fantasia = c1.text_input("NOME REDUZIDO (Fantasia)", value=dados['NOME REDUZIDO'])
-    novo_tipo = c2.selectbox("TIPO", ["Pessoa Juridica", "Pessoa Fisica"], index=0 if dados['TIPO'] == "Pessoa Juridica" else 1)
+    c1.text_input("RAZÃO SOCIAL", value=dados['RAZAO SOCIAL'], disabled=True)
+    c2.text_input("CNPJ", value=dados['CNPJ'], disabled=True)
     
-    # Campos TRAVADOS (não podem editar CNPJ nem Razão Social)
-    st.text_input("RAZÃO SOCIAL (Protegido)", value=dados['RAZAO SOCIAL'], disabled=True)
-    st.text_input("CNPJ/CPF (Protegido)", value=dados['CNPJ'] if str(dados['CNPJ']) != 'nan' else dados['CPF'], disabled=True)
-    
-    # Outros campos de contato/endereço
-    c3, c4 = st.columns(2)
-    novo_tel = c3.text_input("TELEFONE", value=dados['TELEFONE'])
+    # --- DADOS EDITÁVEIS (CONTATO) ---
+    c3, c4, c5 = st.columns([2, 2, 1])
+    novo_fantasia = c3.text_input("NOME REDUZIDO", value=dados['NOME REDUZIDO'])
     novo_email = c4.text_input("EMAIL", value=dados['EMAIL'])
+    novo_tel = c5.text_input("TELEFONE", value=dados['TELEFONE'])
     
-    novo_rua = st.text_input("RUA", value=dados['RUA'])
+    # --- ENDEREÇO ---
+    st.divider()
+    c6, c7, c8 = st.columns([3, 1, 2])
+    novo_rua = c6.text_input("RUA", value=dados['RUA'])
+    novo_num = c7.text_input("Nº", value=dados['NUMERO'])
+    novo_bairro = c8.text_input("BAIRRO", value=dados['BAIRRO'])
     
-    if st.button("💾 ATUALIZAR CADASTRO", use_container_width=True):
+    c9, c10, c11 = st.columns([2, 1, 2])
+    novo_mun = c9.text_input("MUNICÍPIO", value=dados['MUNICIPIO'])
+    novo_uf = c10.text_input("UF", value=dados['UF'], max_chars=2)
+    novo_cep = c11.text_input("CEP", value=dados['CEP'])
+    
+    # --- NOVO CAMPO: HISTÓRICO DE AÇÕES ---
+    st.divider()
+    st.markdown("📋 **Histórico de Interações / Ações Tratadas**")
+    # Pega o histórico antigo ou deixa vazio se for a primeira vez
+    hist_antigo = str(dados.get('HISTORICO', '')) if str(dados.get('HISTORICO', '')) != 'nan' else ""
+    novo_historico = st.text_area("Notas do Comercial", value=hist_antigo, height=150, 
+                                  placeholder="Ex: 12/03/2026 - Cliente solicitou orçamento de filtros de carvão...")
+
+    if st.button("💾 ATUALIZAR FICHA DO CLIENTE", use_container_width=True):
         try:
             df_full = conn.read(worksheet="Clientes", ttl=0)
-            # Atualiza os valores permitidos usando o índice
-            df_full.at[indice, 'NOME REDUZIDO'] = novo_nome_fantasia
-            df_full.at[indice, 'TIPO'] = novo_tipo
-            df_full.at[indice, 'TELEFONE'] = novo_tel
+            
+            # Mapeando as atualizações
+            df_full.at[indice, 'NOME REDUZIDO'] = novo_fantasia
             df_full.at[indice, 'EMAIL'] = novo_email
+            df_full.at[indice, 'TELEFONE'] = novo_tel
             df_full.at[indice, 'RUA'] = novo_rua
+            df_full.at[indice, 'NUMERO'] = novo_num
+            df_full.at[indice, 'BAIRRO'] = novo_bairro
+            df_full.at[indice, 'MUNICIPIO'] = novo_mun
+            df_full.at[indice, 'UF'] = novo_uf
+            df_full.at[indice, 'CEP'] = novo_cep
+            df_full.at[indice, 'HISTORICO'] = novo_historico
             
             conn.update(worksheet="Clientes", data=df_full)
-            st.success("Dados atualizados!")
+            st.success("Ficha atualizada com sucesso!")
             st.cache_data.clear()
             st.rerun()
         except Exception as e:
-            st.error(f"Erro ao atualizar: {e}")
-
+            st.error(f"Erro ao salvar: {e}")
 
 # --- INTERFACE ---
 st.title("👥 Gestão de Clientes - Filtros DC")
