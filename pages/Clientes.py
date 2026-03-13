@@ -25,6 +25,44 @@ def carregar_dados():
         st.error(f"Erro ao carregar: {e}")
         return pd.DataFrame()
 
+@st.dialog("📝 Editar Ficha do Cliente")
+def editar_cliente_dialog(indice, dados):
+    st.write(f"Editando Registro: **{dados['NR CLIENTE']}**")
+    
+    # Campos que PODEM ser editados
+    c1, c2 = st.columns(2)
+    novo_nome_fantasia = c1.text_input("NOME REDUZIDO (Fantasia)", value=dados['NOME REDUZIDO'])
+    novo_tipo = c2.selectbox("TIPO", ["Pessoa Juridica", "Pessoa Fisica"], index=0 if dados['TIPO'] == "Pessoa Juridica" else 1)
+    
+    # Campos TRAVADOS (não podem editar CNPJ nem Razão Social)
+    st.text_input("RAZÃO SOCIAL (Protegido)", value=dados['RAZAO SOCIAL'], disabled=True)
+    st.text_input("CNPJ/CPF (Protegido)", value=dados['CNPJ'] if str(dados['CNPJ']) != 'nan' else dados['CPF'], disabled=True)
+    
+    # Outros campos de contato/endereço
+    c3, c4 = st.columns(2)
+    novo_tel = c3.text_input("TELEFONE", value=dados['TELEFONE'])
+    novo_email = c4.text_input("EMAIL", value=dados['EMAIL'])
+    
+    novo_rua = st.text_input("RUA", value=dados['RUA'])
+    
+    if st.button("💾 ATUALIZAR CADASTRO", use_container_width=True):
+        try:
+            df_full = conn.read(worksheet="Clientes", ttl=0)
+            # Atualiza os valores permitidos usando o índice
+            df_full.at[indice, 'NOME REDUZIDO'] = novo_nome_fantasia
+            df_full.at[indice, 'TIPO'] = novo_tipo
+            df_full.at[indice, 'TELEFONE'] = novo_tel
+            df_full.at[indice, 'EMAIL'] = novo_email
+            df_full.at[indice, 'RUA'] = novo_rua
+            
+            conn.update(worksheet="Clientes", data=df_full)
+            st.success("Dados atualizados!")
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao atualizar: {e}")
+
+
 # --- INTERFACE ---
 st.title("👥 Gestão de Clientes - Filtros DC")
 
@@ -36,11 +74,43 @@ df_clientes = carregar_dados()
 # --- CONTEÚDO DA ABA 1 (LISTA) ---
 with aba1:
     if not df_clientes.empty:
-        busca = st.text_input("🔍 Filtrar na base de dados...")
-        df_filtrado = df_clientes[df_clientes.apply(lambda r: r.astype(str).str.contains(busca, case=False).any(), axis=1)] if busca else df_clientes
-        st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+        # Busca aprimorada
+        busca = st.text_input("🔍 Buscar por Nome, CNPJ ou Cidade...", placeholder="Digite para filtrar...")
+        
+        # Filtro lógico
+        if busca:
+            mask = df_clientes.apply(lambda r: r.astype(str).str.contains(busca, case=False).any(), axis=1)
+            df_exibir = df_clientes[mask]
+        else:
+            df_exibir = df_clientes
+
+        st.write(f"Exibindo {len(df_exibir)} clientes")
+        st.divider()
+
+        # Layout de "Cards" ou Tabela com botão
+        # Para um visual bem "comercial", vamos usar colunas para simular uma tabela com botão
+        cols = st.columns([1, 3, 2, 2, 1])
+        cols[0].markdown("**ID**")
+        cols[1].markdown("**CLIENTE**")
+        cols[2].markdown("**CNPJ/CPF**")
+        cols[3].markdown("**CONTATO**")
+        cols[4].markdown("**AÇÃO**")
+        st.divider()
+
+        for i, row in df_exibir.iterrows():
+            with st.container():
+                c1, c2, c3, c4, c5 = st.columns([1, 3, 2, 2, 1])
+                c1.write(row['NR CLIENTE'])
+                c2.write(f"**{row['NOME REDUZIDO']}**")
+                c3.write(row['CNPJ'] if str(row['CNPJ']) != 'nan' else row['CPF'])
+                c4.write(row['TELEFONE'])
+                
+                # Botão para abrir o Popup de edição
+                if c5.button("✏️ Ver/Edit", key=f"edit_{i}"):
+                    editar_cliente_dialog(i, row)
+                st.divider()
     else:
-        st.info("Nenhum cliente carregado ou planilha vazia.")
+        st.info("Nenhum cliente cadastrado.")
 
 # --- CONTEÚDO DA ABA 2 (CADASTRO) ---
 with aba2:
