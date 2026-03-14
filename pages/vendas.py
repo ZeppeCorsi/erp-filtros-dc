@@ -44,7 +44,7 @@ with st.container(border=True):
         df_orc['OPCAO'] = df_orc['DATA'].astype(str) + " - " + df_orc['CLIENTE'].astype(str)
         lista_disponivel = sorted(df_orc['OPCAO'].unique().tolist(), reverse=True)
         
-        orc_selecionado = st.selectbox("Escolha o orçamento para faturar:", [""] + lista_disponivel)
+        orc_selecionado = st.selectbox("Escolha o orçamento para efetivar:", [""] + lista_disponivel)
         
         if orc_selecionado != "":
             if st.button("📂 IMPORTAR ITENS DO ORÇAMENTO", use_container_width=True):
@@ -100,6 +100,61 @@ if st.session_state.cesta:
 
     total_geral = sum(it['TOTAL'] for it in st.session_state.cesta)
     st.info(f"#### 💰 TOTAL GERAL DA VENDA: R$ {total_geral:,.2f}")
+
+# --- 4. FATURAMENTO (FLUXO DE CAIXA) ---
+if st.session_state.get('venda_finalizada'):
+    st.divider()
+    with st.container(border=True):
+        st.subheader("🏦 Faturamento - Fluxo de Caixa")
+        
+        col_parc1, col_parc2 = st.columns([1, 2])
+        num_parcelas = col_parc1.number_input("Qtd de Parcelas", min_value=1, max_value=12, value=1)
+        status_inicial = col_parc2.selectbox("Status Inicial", ["PENDENTE", "RECEBIDO"])
+
+        valor_parcela = round(total_geral / num_parcelas, 2)
+        
+        st.write("📅 **Defina as datas de vencimento:**")
+        lista_datas = []
+        cols_datas = st.columns(3) 
+        for i in range(num_parcelas):
+            com_col = cols_datas[i % 3] 
+            data_p = com_col.date_input(f"Data Parcela {i+1}/{num_parcelas}", datetime.now(), key=f"dt_parc_{i}")
+            lista_datas.append(data_p)
+
+        if st.button("💰 CONFIRMAR E LANÇAR NO CAIXA", use_container_width=True, type="primary"):
+            try:
+                # 1. CRIAMOS A LISTA AQUI (Evita o erro 'not defined')
+                novas_lancamentos = [] 
+                
+                # 2. LEMOS A PLANILHA
+                df_caixa = conn.read(worksheet="Fluxo de Caixa", ttl=0).dropna(how='all')
+                
+                # 3. ALIMENTAMOS A LISTA
+                for i in range(num_parcelas):
+                    novas_lancamentos.append({
+                        "DATA": lista_datas[i].strftime("%d/%m/%Y"),
+                        "TIPO": "ENTRADA",
+                        "DESCRICAO": f"VENDA - {cliente_final}".upper(),
+                        "VALOR": valor_parcela,
+                        "PARCELA": f"{i+1}/{num_parcelas}",
+                        "STATUS": status_inicial,
+                        "CLIENTE": cliente_final
+                    })
+                
+                # 4. SALVAMOS
+                df_final_caixa = pd.concat([df_caixa, pd.DataFrame(novas_lancamentos)], ignore_index=True)
+                conn.update(worksheet="Fluxo de Caixa", data=df_final_caixa)
+                
+                st.success(f"✅ {num_parcelas} lançamentos criados!")
+                st.balloons()
+                
+                # Reset para próxima venda
+                st.session_state.cesta = []
+                st.session_state.venda_finalizada = False
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Erro ao salvar no Fluxo de Caixa: {e}")
     
     col_f1, col_f2 = st.columns(2)
     with col_f1:
