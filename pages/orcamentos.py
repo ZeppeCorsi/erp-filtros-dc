@@ -3,200 +3,338 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 from fpdf import FPDF
+import io
+from datetime import datetime
 
-# --- 1. FUNÇÃO DO PDF (REVISADA E MELHORADA) ---
 def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato, email, tel):
     pdf = FPDF()
     pdf.add_page()
     
+    # Função para evitar erro de caracteres (Hífen longo, etc)
     def clean(txt):
         if not txt: return ""
         return str(txt).replace('—', '-').replace('–', '-').replace('“', '"').replace('”', '"')
 
-    # --- CABEÇALHO ---
+    # --- 1. CABEÇALHO ---
     try:
         pdf.image("LOGO Fundo Branco Puro.png", x=10, y=8, w=50)
     except:
         pdf.set_font("Helvetica", "B", 15)
-        pdf.text(10, 20, "FILTROS DC")
+        pdf.text(10, 15, "FILTROS DC")
 
     pdf.set_font("Helvetica", "", 8)
     pdf.set_xy(130, 10)
     end_dc = "Filtros DC Comercio Ltda.\nCNPJ 61.696.514/0001-18\nRua Nicolau Zarvos, 161 - Jabaquara\n(11) 2592.0025 | www.masterfilter.com.br"
     pdf.multi_cell(70, 4, clean(end_dc), align="R")
     
+    pdf.ln(15)
     pdf.line(10, 32, 200, 32)
-    pdf.ln(20)
 
-    # --- DADOS DO CLIENTE ---
+    # --- 2. DADOS DO CLIENTE ---
+    pdf.ln(5)
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(0, 5, f"DATA: {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
+    
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 7, f"Aos cuidados: {clean(contato).upper()}", ln=True)
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 6, f"Cliente: {clean(cliente)}", ln=True)
     pdf.cell(0, 6, f"E-mail: {clean(email)} | Tel: {clean(tel)}", ln=True)
     
-    # INTRODUÇÃO
+   
+    # --- NOVO: TEXTO DE APRESENTAÇÃO (36 ANOS) ---
     pdf.ln(5)
     pdf.set_font("Helvetica", "", 10)
-    texto_intro = "Com 36 anos de experiência no mercado de filtragem industrial, a Filtros DC consolida-se pela excelência técnica. Apresentamos nossa proposta comercial detalhada."
-    pdf.multi_cell(0, 5, clean(texto_intro), align="J")
-    
-    # TÍTULO
+    texto_intro = (
+        "Com 36 anos de experiência no mercado de filtragem industrial, a Filtros DC consolida-se pela "
+        "excelência técnica e compromisso com a qualidade. Apresentamos abaixo nossa proposta comercial "
+        "detalhada, desenvolvida sob medida para atender às necessidades específicas de sua operação."
+    )
+    pdf.multi_cell(0, 5, clean(texto_intro), align="J") # "J" para justificado
+    pdf.ln(5)
+
+         # --- TÍTULO DA PROPOSTA ---
     pdf.ln(5)
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_fill_color(230, 230, 230)
     pdf.cell(0, 10, "PROPOSTA COMERCIAL", ln=True, align="C", fill=True)
 
-    # --- TABELA DE ITENS (CORRIGIDA) ---
+    # --- 3. TABELA DE PRODUTOS (Recuperada e Ampliada) ---
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(90, 8, "Descricao", border=1, fill=True)
+    pdf.cell(90, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
     pdf.cell(15, 8, "Qtd", border=1, align="C", fill=True)
-    pdf.cell(42, 8, "Unitario", border=1, align="C", fill=True)
+    pdf.cell(42, 8, "Unitário", border=1, align="C", fill=True)
     pdf.cell(43, 8, "Total", border=1, align="C", fill=True)
     pdf.ln()
 
     pdf.set_font("Helvetica", "", 9)
     for it in itens:
-        alt_inicial = pdf.get_y()
-        # Coluna Descrição (MultiCell para detalhes técnicos)
-        pdf.multi_cell(90, 5, clean(f"{it['ITEM']}\n{it['DETALHES']}"), border=1)
-        alt_final = pdf.get_y()
-        h_linha = alt_final - alt_inicial
+        x_start = pdf.get_x()
+        y_start = pdf.get_y()
         
-        # Reposiciona para as colunas laterais na mesma altura
-        pdf.set_xy(100, alt_inicial)
+        # Descrição com MultiCell para as especificações técnicas
+        pdf.multi_cell(90, 5, clean(f"{it['ITEM']}\n{it['DETALHES']}"), border=1)
+        y_end = pdf.get_y()
+        h_linha = y_end - y_start
+        
+        # Colunas laterais
+        pdf.set_xy(x_start + 90, y_start)
         pdf.cell(15, h_linha, str(it['QTD']), border=1, align="C")
-        pdf.cell(42, h_linha, f"R$ {it['UNIT']:,.2f}", border=1, align="R")
-        pdf.cell(43, h_linha, f"R$ {it['TOTAL']:,.2f}", border=1, align="R")
-        pdf.ln(h_linha)
+        
+        u = f"R$ {it['UNIT']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        t = f"R$ {it['TOTAL']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        
+        pdf.cell(42, h_linha, u, border=1, align="R")
+        pdf.cell(43, h_linha, t, border=1, align="R")
+        pdf.ln()
 
-    # TOTAL
+    # --- 4. TOTAL E CONDIÇÕES GERAIS ---
     pdf.ln(5)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(147, 10, "VALOR TOTAL:", align="R")
-    pdf.cell(43, 10, f"R$ {total:,.2f}", border=1, align="R", ln=True)
+    tot_br = f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    pdf.cell(147, 10, "VALOR TOTAL DA PROPOSTA:", align="R")
+    pdf.cell(43, 10, tot_br, align="R", ln=True)
     
-    # OBSERVAÇÕES
     pdf.ln(5)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 5, "CONDICOES GERAIS:", ln=True)
+    pdf.cell(0, 5, "CONDIÇÕES GERAIS:", ln=True)
     pdf.set_font("Helvetica", "", 9)
-    pdf.multi_cell(0, 5, clean(obs))
+    pdf.multi_cell(0, 5, clean(obs)) # Aqui as condições que você sentiu falta!
 
-    # --- ASSINATURA (RECUPERADA) ---
+    # --- 5. ASSINATURA ---
     pdf.ln(10)
     try:
-        pdf.image("Assinatura Chiodo.jpg", x=70, w=65)
+        # Centralizando a imagem da assinatura
+        pdf.image("Assinatura Chiodo.jpg", x=70, w=65) 
     except:
-        pdf.ln(15)
-        pdf.cell(0, 5, "________________________________________", ln=True, align="C")
+        pdf.ln(10)
+        pdf.cell(0, 5, "________________________________________________", ln=True, align="C")
     
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(0, 5, f"Vendedor: {clean(vendedor)} - Filtros DC", ln=True, align="C")
 
     return pdf.output()
 
-# --- 2. INTERFACE E LÓGICA ---
+
+# 1. SEGURANÇA
+if 'logado' not in st.session_state or not st.session_state.logado:
+    st.error("🚫 Acesso negado! Faça login na Home.")
+    st.stop()
 
 st.set_page_config(page_title="Orçamentos | Filtros DC", layout="wide")
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Carregamento de bases
+perfil_usuario = st.session_state.get('perfil', 'VENDEDOR').upper().strip()
+
+# Inicialização da Cesta de Orçamento
+if 'cesta_orc' not in st.session_state: st.session_state.cesta_orc = []
+if 'idx_o' not in st.session_state: st.session_state.idx_o = 0
+
 ID_P = "1e4OxEVcNSdvi0NehhTgt0zvWK9ncAgGQa1E6WAEgFE8"
 URL_C = f"https://docs.google.com/spreadsheets/d/{ID_P}/gviz/tq?tqx=out:csv&sheet=Clientes"
 URL_P = f"https://docs.google.com/spreadsheets/d/{ID_P}/gviz/tq?tqx=out:csv&sheet=Produtos"
 
+def limpar_colunas(df):
+    # Remove aspas e espaços dos nomes das colunas e coloca em MAIÚSCULO
+    df.columns = [str(c).replace('"', '').strip().upper() for c in df.columns]
+    return df
+
 @st.cache_data(ttl=2)
-def carregar_bases():
-    c = pd.read_csv(URL_C)
-    p = pd.read_csv(URL_P)
-    c.columns = [str(col).upper() for col in c.columns]
-    p.columns = [str(col).upper() for col in p.columns]
-    return c, p
+def carregar():
+    try:
+        # Lemos os CSVs diretamente
+        c = pd.read_csv(URL_C)
+        p = pd.read_csv(URL_P)
+        return limpar_colunas(c), limpar_colunas(p)
+    except Exception as e:
+        st.error(f"Erro ao ler planilha: {e}")
+        return pd.DataFrame(), pd.DataFrame()
 
-df_cli, df_prod = carregar_bases()
+df_cli, df_prod = carregar()
 
-# --- POPUP DE EDIÇÃO COMPLETA ---
-@st.dialog("📝 Editar Orçamento e PDF")
-def editar_orcamento_dialog(cliente, data_orig, itens_df):
-    if 'cesta_temp' not in st.session_state:
-        st.session_state.cesta_temp = []
-        for _, it in itens_df.iterrows():
-            st.session_state.cesta_temp.append({
-                "ITEM": it['PRODUTO'], "DETALHES": it['DETALHES'],
-                "QTD": int(it['QT']), "UNIT": float(it['VALOR UNITARIO']),
-                "TOTAL": float(it['VALOR TOTAL'])
-            })
+st.title("📄 Novo Orçamento")
 
-    st.subheader(f"Cliente: {cliente}")
+# --- 1. CLIENTE ---
+st.subheader("1. Identificação do Cliente")
+c_b, c_l = st.columns([3, 1])
+busca = c_b.text_input("Buscar cliente por nome", placeholder="Ex: HOTEL")
+# Novos campos para preenchimento manual ou automático
+col_c1, col_c2, col_c3 = st.columns(3)
+with col_c1: contato_orc = st.text_input("Aos cuidados de (Nome):", placeholder="Sr. João")
+with col_c2: email_orc = st.text_input("E-mail de contato:")
+with col_c3: tel_orc = st.text_input("Telefone/WhatsApp:")
+
+
+# Forçamos a busca pela coluna exata 'NOME'
+if 'NOME REDUZIDO' in df_cli.columns:
+    # Criamos a lista garantindo que sejam apenas os nomes (texto)
+    lista_nomes = df_cli['NOME REDUZIDO'].astype(str).unique().tolist()
+    lista_nomes = sorted([n for n in lista_nomes if n not in ['nan', 'None', '0', '1']])
     
-    # 1. Adicionar NOVO item dentro do Editar
-    with st.expander("➕ Adicionar novo item a este orçamento"):
-        p_sel = st.selectbox("Escolha o Produto", df_prod['NOME'].unique(), key="add_p_pop")
-        c1, c2 = st.columns(2)
-        q_sel = c1.number_input("Qtd", min_value=1, value=1, key="add_q_pop")
-        v_sel = c2.number_input("Preço", value=0.0, key="add_v_pop")
-        d_sel = st.text_area("Detalhes Técnicos", key="add_d_pop").upper()
-        if st.button("Inserir Item"):
-            st.session_state.cesta_temp.append({
-                "ITEM": p_sel, "DETALHES": d_sel, "QTD": q_sel, "UNIT": v_sel, "TOTAL": q_sel * v_sel
+    if c_l.button("🔍 Buscar"):
+        # Filtra a lista pelo que foi digitado
+        match = [n for n in lista_nomes if busca.upper() in n.upper()]
+        if match: 
+            st.session_state.idx_o = lista_nomes.index(match[0])
+            st.rerun() # Força a atualização para selecionar o nome encontrado
+        else: 
+            st.warning("Cliente não encontrado.")
+
+    col1, col2 = st.columns([3, 1])
+    
+    # IMPORTANTE: O selectbox usa a lista_nomes que só tem texto agora
+    cliente_orc = col1.selectbox(
+        "Confirme o Cliente", 
+        options=lista_nomes, 
+        index=st.session_state.idx_o if st.session_state.idx_o < len(lista_nomes) else 0
+    )
+    validade_orc = col2.date_input("Válido até", datetime.now(), format="DD/MM/YYYY")
+else:
+    # Se não achar 'NOME', ele mostra as colunas disponíveis para você conferir
+    st.error(f"Coluna 'NOME' não encontrada. Colunas disponíveis: {list(df_cli.columns)}")
+    st.stop()
+
+# --- 2. PRODUTOS COM DETALHES ---
+st.subheader("2. Itens do Orçamento")
+
+# AJUSTE 2: Forçamos a busca pelas colunas exatas que estão no seu arquivo de Produtos
+# No seu Produtos.py as colunas são 'NOME' e 'PRECO'
+col_prod = "NOME" if "NOME" in df_prod.columns else next((c for c in df_prod.columns if 'DESCRI' in c or 'PRODUTO' in c), None)
+col_preco = "PRECO" if "PRECO" in df_prod.columns else next((c for c in df_prod.columns if 'LISTA' in c or 'VALOR' in c), None)
+
+if col_prod and col_preco:
+    with st.container(border=True):
+        c3, c4, c5 = st.columns([2, 1, 1])
+        
+        # Pegamos a lista de nomes de produtos
+        lista_prods = df_prod[col_prod].dropna().unique().tolist()
+        prod_sel = c3.selectbox("Produto", options=lista_prods)
+        
+        # Pegamos o preço bruto
+        linha_prod = df_prod[df_prod[col_prod] == prod_sel]
+        p_bruto = linha_prod[col_preco].values[0] if not linha_prod.empty else 0.0
+        
+        # Tratamento de número se vier como texto (Ex: 1.500,00)
+        if isinstance(p_bruto, str): 
+            p_bruto = p_bruto.replace('.', '').replace(',', '.')
+        
+        try:
+            preco_unit = float(p_bruto)
+        except:
+            preco_unit = 0.0
+
+        qtd = c4.number_input("QTD", min_value=1, value=1)
+        valor_u = c5.number_input("Preço Unit (R$)", min_value=0.0, value=preco_unit, format="%.2f")
+        
+        detalhes_item = st.text_area("🔧 Detalhes Técnicos deste Item", placeholder="Ex: Material, conexões...")
+
+        if st.button("➕ ADICIONAR AO ORÇAMENTO", use_container_width=True):
+            st.session_state.cesta_orc.append({
+                "ITEM": prod_sel,
+                "DETALHES": detalhes_item.upper(),
+                "QTD": qtd,
+                "UNIT": valor_u,
+                "TOTAL": qtd * valor_u
             })
             st.rerun()
+else:
+    st.error(f"Erro: Colunas de produto não identificadas. Colunas atuais: {list(df_prod.columns)}")
 
-    st.divider()
-    
-    # 2. Lista de Itens Atuais
-    itens_para_remover = []
-    for i, item in enumerate(st.session_state.cesta_temp):
+# --- 3. RESUMO E GRAVAÇÃO ---
+if st.session_state.cesta_orc:
+    st.write("### 📝 Resumo da Proposta")
+    for i, item in enumerate(st.session_state.cesta_orc):
         with st.container(border=True):
-            col1, col2, col3, col4 = st.columns([3, 1, 1, 0.5])
-            col1.write(f"**{item['ITEM']}**")
-            st.session_state.cesta_temp[i]['QTD'] = col2.number_input("Qtd", value=item['QTD'], key=f"q_pop_{i}")
-            st.session_state.cesta_temp[i]['UNIT'] = col3.number_input("Unit", value=item['UNIT'], key=f"u_pop_{i}")
-            st.session_state.cesta_temp[i]['DETALHES'] = st.text_area("Detalhes Técnicos", value=item['DETALHES'], key=f"d_pop_{i}").upper()
-            if col4.button("🗑️", key=f"del_pop_{i}"):
-                itens_para_remover.append(i)
+            cols = st.columns([4, 1, 1, 1])
+            cols[0].write(f"**{i+1}. {item['ITEM']}**")
+            if item['DETALHES']:
+                cols[0].caption(f"Especificações: {item['DETALHES']}")
+            cols[0].write(f"R$ {item['UNIT']:,.2f} x {item['QTD']} = **R$ {item['TOTAL']:,.2f}**")
+            
+            if cols[1].button("➖", key=f"mo_{i}"):
+                if item['QTD'] > 1:
+                    st.session_state.cesta_orc[i]['QTD'] -= 1
+                    st.session_state.cesta_orc[i]['TOTAL'] = st.session_state.cesta_orc[i]['QTD'] * item['UNIT']
+                else: st.session_state.cesta_orc.pop(i)
+                st.rerun()
+            if cols[2].button("➕", key=f"po_{i}"):
+                st.session_state.cesta_orc[i]['QTD'] += 1
+                st.session_state.cesta_orc[i]['TOTAL'] = st.session_state.cesta_orc[i]['QTD'] * item['UNIT']
+                st.rerun()
+            if cols[3].button("🗑️", key=f"do_{i}"):
+                st.session_state.cesta_orc.pop(i)
+                st.rerun()
+
+    total_geral = sum(it['TOTAL'] for it in st.session_state.cesta_orc)
+    st.info(f"#### 💰 VALOR TOTAL: R$ {total_geral:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
     
-    for i in sorted(itens_para_remover, reverse=True):
-        st.session_state.cesta_temp.pop(i)
-        st.rerun()
+    obs_gerais = st.text_area("📝 Condições Gerais", "PAGAMENTO: 30 DIAS | ENTREGA: 05 DIAS ÚTEIS | FRETE: FOB").upper()
 
-    total_t = sum(it['TOTAL'] for it in st.session_state.cesta_temp)
-    obs_pop = st.text_area("Condições Gerais", "PAGAMENTO: 30 DIAS | ENTREGA: 05 DIAS", key="obs_p").upper()
-    
-    st.markdown(f"### Total: R$ {total_t:,.2f}")
-    
-    if st.button("📥 GERAR PDF ATUALIZADO", use_container_width=True, type="primary"):
-        pdf_b = gerar_pdf_orcamento(cliente, "", st.session_state.cesta_temp, total_t, obs_pop, "VENDEDOR", "CLIENTE", "", "")
-        st.download_button("CLIQUE PARA BAIXAR", data=bytes(pdf_b), file_name=f"Orcamento_{cliente}.pdf", use_container_width=True)
+    # --- INSERIR O BLOCO DO PDF AQUI (Entre a 153 e 154) ---
+    # --- INSERIR O BLOCO DO PDF AQUI ---
+    try:
+       # 1. Gera o conteúdo bruto (bytearray)
+        pdf_bruto = gerar_pdf_orcamento(
+            cliente_orc, 
+            validade_orc, 
+            st.session_state.cesta_orc, 
+            total_geral, 
+            obs_gerais, 
+            st.session_state.get('usuario', 'SISTEMA'),
+            contato_orc,  # <--- 
+            email_orc,    # <--- 
+            tel_orc       # <--- 
+        )
+        
+        # 2. O SEGREDO: Converte o bytearray em um formato que o botão entende (bytes)
+        pdf_final = bytes(pdf_bruto)
 
-# --- ABAS PRINCIPAIS ---
-aba1, aba2 = st.tabs(["➕ Novo Orçamento", "🔍 Buscar Orçamentos"])
+        # 3. Botão de download atualizado
+        st.download_button(
+            label="📥 BAIXAR ORÇAMENTO EM PDF",
+            data=pdf_final,
+            file_name=f"Orcamento_{cliente_orc}_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
 
-with aba1:
-    # (Sua lógica de novo orçamento já funciona bem, mantive o padrão)
-    st.subheader("Cadastro de Proposta")
-    # ... (restante do seu código de novo orçamento) ...
-    if st.button("➕ ADICIONAR ITEM NA CESTA PRINCIPAL"):
-        # Lógica de adição aqui...
-        pass
+    except Exception as e:
+        st.error(f"Erro ao gerar visualização do PDF: {e}")
+    except Exception as e:
+        st.error(f"Erro ao gerar visualização do PDF: {e}")
 
-with aba2:
-    st.subheader("Histórico de Orçamentos")
-    df_hist = conn.read(worksheet="Orcamentos", ttl=0)
-    if not df_hist.empty:
-        # Agrupamento para não repetir linhas
-        resumo = df_hist.groupby(['DATA', 'CLIENTE']).size().reset_index()
-        for i, row in resumo.iterrows():
-            with st.container(border=True):
-                c1, c2, c3 = st.columns([1, 3, 1])
-                c1.write(row['DATA'])
-                c2.write(f"**{row['CLIENTE']}**")
-                if c3.button("✏️ Editar / PDF", key=f"h_{i}"):
-                    itens_sel = df_hist[(df_hist['CLIENTE'] == row['CLIENTE']) & (df_hist['DATA'] == row['DATA'])]
-                    if 'cesta_temp' in st.session_state: del st.session_state.cesta_temp
-                    editar_orcamento_dialog(row['CLIENTE'], row['DATA'], itens_sel)
+    if st.button("💾 SALVAR ORÇAMENTO NA PLANILHA", use_container_width=True, type="primary"):
+        try:
+            # AJUSTE 3: Pegamos o nome do usuário logado do session_state
+            vendedor = st.session_state.get('usuario', 'SISTEMA')
+            
+            df_atual = conn.read(worksheet="Orcamentos", ttl=0).dropna(how='all')
+            
+            novas_linhas = []
+            for it in st.session_state.cesta_orc:
+                novas_linhas.append({
+                    "DATA": datetime.now().strftime("%d/%m/%Y"),
+                    "VALIDADE": validade_orc.strftime("%d/%m/%Y"),
+                    "CLIENTE": cliente_orc,
+                    "PRODUTO": it["ITEM"],
+                    "QT": it["QTD"],
+                    "VALOR UNITARIO": it["UNIT"],
+                    "VALOR TOTAL": it["TOTAL"],
+                    "VENDEDOR": vendedor,
+                    "CONDICOES GERAIS": obs_gerais,
+                    "DETALHES": it["DETALHES"]
+                })
+            
+            df_novos = pd.DataFrame(novas_linhas)
+            df_final = pd.concat([df_atual, df_novos], ignore_index=True)
+            conn.update(worksheet="Orcamentos", data=df_final)
+            
+            st.success("✅ ORÇAMENTO SALVO!")
+            st.session_state.cesta_orc = []
+            st.balloons()
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"Erro técnico ao salvar: {e}")
 
 st.sidebar.image("LOGO Horizontal.jpg", use_container_width=True)
