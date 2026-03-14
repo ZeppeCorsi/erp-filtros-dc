@@ -81,13 +81,13 @@ data_op = col_v2.date_input("Data da Venda", datetime.now(), format="DD/MM/YYYY"
 # --- 3. RESUMO E FECHAMENTO ---
 if st.session_state.cesta:
     st.write("### 📝 Itens do Pedido")
+    total_geral = sum(it['TOTAL'] for it in st.session_state.cesta)
+    
     for i, item in enumerate(st.session_state.cesta):
         with st.container(border=True):
             cols = st.columns([4, 1, 1])
             cols[0].write(f"**{i+1}. {item['ITEM']}**")
             cols[0].write(f"R$ {item['UNIT']:,.2f} x {item['QTD']} = **R$ {item['TOTAL']:,.2f}**")
-            
-            # Botões para ajustes finos na hora da venda
             if cols[1].button("➖", key=f"m_{i}"):
                 if item['QTD'] > 1:
                     st.session_state.cesta[i]['QTD'] -= 1
@@ -98,113 +98,87 @@ if st.session_state.cesta:
                 st.session_state.cesta.pop(i)
                 st.rerun()
 
-    total_geral = sum(it['TOTAL'] for it in st.session_state.cesta)
     st.info(f"#### 💰 TOTAL GERAL DA VENDA: R$ {total_geral:,.2f}")
 
-# --- 4. FATURAMENTO (FLUXO DE CAIXA) ---
-if st.session_state.get('venda_finalizada'):
+    # --- 4. PARCELAMENTO PROGRAMÁVEL ---
     st.divider()
-    with st.container(border=True):
-        st.subheader("🏦 Faturamento - Fluxo de Caixa")
-        
-        col_parc1, col_parc2 = st.columns([1, 2])
-        num_parcelas = col_parc1.number_input("Qtd de Parcelas", min_value=1, max_value=12, value=1)
-        status_inicial = col_parc2.selectbox("Status Inicial", ["PENDENTE", "RECEBIDO"])
-
-        valor_parcela = round(total_geral / num_parcelas, 2)
-        
-        st.write("📅 **Defina as datas de vencimento:**")
-        lista_datas = []
-        cols_datas = st.columns(3) 
-        for i in range(num_parcelas):
-            com_col = cols_datas[i % 3] 
-            data_p = com_col.date_input(f"Data Parcela {i+1}/{num_parcelas}", datetime.now(), key=f"dt_parc_{i}")
-            lista_datas.append(data_p)
-
-        if st.button("💰 CONFIRMAR E LANÇAR NO CAIXA", use_container_width=True, type="primary"):
-            try:
-                # 1. CRIAMOS A LISTA AQUI (Evita o erro 'not defined')
-                novas_lancamentos = [] 
-                
-                # 2. LEMOS A PLANILHA
-                df_caixa = conn.read(worksheet="Fluxo de Caixa", ttl=0).dropna(how='all')
-                
-                # 3. ALIMENTAMOS A LISTA
-                for i in range(num_parcelas):
-                    novas_lancamentos.append({
-                        "DATA": lista_datas[i].strftime("%d/%m/%Y"),
-                        "TIPO": "ENTRADA",
-                        "DESCRICAO": f"VENDA - {cliente_final}".upper(),
-                        "VALOR": valor_parcela,
-                        "PARCELA": f"{i+1}/{num_parcelas}",
-                        "STATUS": status_inicial,
-                        "CLIENTE": cliente_final
-                    })
-                
-                # 4. SALVAMOS
-                df_final_caixa = pd.concat([df_caixa, pd.DataFrame(novas_lancamentos)], ignore_index=True)
-                conn.update(worksheet="Fluxo de Caixa", data=df_final_caixa)
-                
-                st.success(f"✅ {num_parcelas} lançamentos criados!")
-                st.balloons()
-                
-                # Reset para próxima venda
-                st.session_state.cesta = []
-                st.session_state.venda_finalizada = False
-                st.rerun()
-
-            except Exception as e:
-                st.error(f"Erro ao salvar no Fluxo de Caixa: {e}")
+    st.subheader("🏦 Faturamento Programável")
     
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        forma_pagto = st.selectbox("💳 Forma de Pagamento:", ["A VISTA", "30 DIAS", "CARTÃO", "PIX"])
-    with col_f2:
-        obs = st.text_area("Observações da Venda").upper()
+    with st.container(border=True):
+        col_f1, col_f2 = st.columns([1, 1])
+        num_parcelas = col_f1.number_input("Dividir em quantas parcelas?", min_value=1, max_value=6, value=1)
+        status_inicial = col_f2.selectbox("Status dos Lançamentos", ["PENDENTE", "RECEBIDO"])
+        
+        dados_parcelas = []
+        soma_atual = 0.0
+        
+        st.write("---")
+        for i in range(int(num_parcelas)):
+            c1, c2, c3 = st.columns([1, 2, 2])
+            c1.markdown(f"<br>**{i+1}ª Parc.**", unsafe_allow_html=True)
+            dt = c2.date_input(f"Vencimento", datetime.now(), key=f"dt_{i}")
+            # Sugere o valor restante na primeira parcela ou valor zerado nas outras
+            sugestao = total_geral if i == 0 else 0.0
+            val = c3.number_input(f"Valor (R$)", min_value=0.0, value=float(sugestao), format="%.2f", key=f"val_{i}")
+            
+            dados_parcelas.append({"DATA": dt, "VALOR": val, "PARCELA": f"{i+1}/{num_parcelas}"})
+            soma_atual += val
 
-    if st.button("🚀 FINALIZAR E SALVAR VENDA", use_container_width=True, type="primary"):
+        # Feedback do valor restante
+        restante = round(total_geral - soma_atual, 2)
+        if restante == 0:
+            st.success("✅ Total das parcelas confere com o total da venda!")
+        elif restante > 0:
+            st.warning(f"⚠️ Falta distribuir: **R$ {restante:,.2f}**")
+        else:
+            st.error(f"❌ Valor ultrapassou o total em: **R$ {abs(restante):,.2f}**")
+
+    # --- 5. BOTÃO FINALIZAR TUDO ---
+    # O botão só funciona se o valor bater
+    pode_finalizar = (restante == 0)
+    
+    if st.button("🚀 FINALIZAR VENDA E GERAR FINANCEIRO", use_container_width=True, type="primary", disabled=not pode_finalizar):
         try:
             vendedor_atual = st.session_state.get('usuario', 'SISTEMA')
-            df_vendas_db = conn.read(worksheet="Vendas", ttl=0)
             
-            novas = []
+            # A. Salvar na aba Vendas
+            df_vendas_db = conn.read(worksheet="Vendas", ttl=0)
+            novas_vendas = []
             for it in st.session_state.cesta:
-                novas.append({
-                    "DATA": data_op.strftime("%d/%m/%Y"),
+                novas_vendas.append({
+                    "DATA": datetime.now().strftime("%d/%m/%Y"),
                     "CLIENTE": cliente_final,
                     "PRODUTO": it["ITEM"],
                     "QTD": it["QTD"],
                     "VALOR UNIT": it["UNIT"],
                     "TOTAL": it["TOTAL"],
-                    "VENDEDOR": vendedor_atual,
-                    "FORMA DE PAGAMENTO": forma_pagto,
-                    "OBS": obs
+                    "VENDEDOR": vendedor_atual
                 })
-            
-            df_final = pd.concat([df_vendas_db, pd.DataFrame(novas)], ignore_index=True)
-            conn.update(worksheet="Vendas", data=df_final)
-            
-            st.session_state.venda_finalizada = True
-            st.success("✅ Venda registrada!")
+            df_venda_final = pd.concat([df_vendas_db, pd.DataFrame(novas_vendas)], ignore_index=True)
+            conn.update(worksheet="Vendas", data=df_venda_final)
+
+            # B. Salvar no Fluxo de Caixa
+            df_caixa = conn.read(worksheet="Fluxo de Caixa", ttl=0).dropna(how='all')
+            novos_lancamentos = []
+            for parc in dados_parcelas:
+                novos_lancamentos.append({
+                    "DATA": parc["DATA"].strftime("%d/%m/%Y"),
+                    "TIPO": "ENTRADA",
+                    "DESCRICAO": f"VENDA - {cliente_final}".upper(),
+                    "VALOR": parc["VALOR"],
+                    "PARCELA": parc["PARCELA"],
+                    "STATUS": status_inicial,
+                    "CLIENTE": cliente_final
+                })
+            df_caixa_final = pd.concat([df_caixa, pd.DataFrame(novos_lancamentos)], ignore_index=True)
+            conn.update(worksheet="Fluxo de Caixa", data=df_caixa_final)
+
+            st.success("🎉 Venda e Financeiro registrados com sucesso!")
+            st.balloons()
+            st.session_state.cesta = []
+            st.rerun()
             
         except Exception as e:
-            st.error(f"Erro ao salvar: {e}")
-
-    # --- BAIXA DE ESTOQUE ---
-    if st.session_state.get('venda_finalizada'):
-        with st.container(border=True):
-            st.warning("📦 **Deseja abater esses itens do Estoque?**")
-            if st.button("✅ SIM, BAIXAR AGORA"):
-                df_estoque = conn.read(worksheet="Produtos", ttl=0)
-                df_estoque.columns = [str(c).strip().upper() for c in df_estoque.columns]
-                for it in st.session_state.cesta:
-                    mask = df_estoque['NOME'] == it["ITEM"]
-                    if mask.any():
-                        df_estoque.loc[mask, 'ESTOQUE'] = pd.to_numeric(df_estoque.loc[mask, 'ESTOQUE']).fillna(0) - it["QTD"]
-                conn.update(worksheet="Produtos", data=df_estoque)
-                st.session_state.cesta = []
-                st.session_state.venda_finalizada = False
-                st.session_state.cliente_venda = None
-                st.rerun()
+            st.error(f"Erro ao processar: {e}")
 
 st.sidebar.image("LOGO Horizontal.jpg", use_container_width=True)
