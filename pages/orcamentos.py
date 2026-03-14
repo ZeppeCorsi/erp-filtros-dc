@@ -154,6 +154,41 @@ df_cli, df_prod = carregar()
 
 st.title("📄 Novo Orçamento")
 
+# --- INÍCIO DO BLOCO DE BUSCA E EDIÇÃO ---
+with st.expander("🔍 BUSCAR ORÇAMENTO ANTIGO PARA EDITAR", expanded=False):
+    df_hist = conn.read(worksheet="Orcamentos", ttl=0).dropna(how='all')
+    
+    if not df_hist.empty:
+        df_hist['OPCAO'] = df_hist['DATA'].astype(str) + " - " + df_hist['CLIENTE'].astype(str)
+        lista_orc = sorted(df_hist['OPCAO'].unique().tolist(), reverse=True)
+        orc_escolhido = st.selectbox("Selecione um orçamento salvo:", [""] + lista_orc)
+        
+        if orc_escolhido != "":
+            if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
+                data_sel, cliente_sel = orc_escolhido.split(" - ", 1)
+                
+                # --- NOVIDADE: Salvamos quem estamos editando para substituir depois ---
+                st.session_state.editando_orc = {"DATA": data_sel, "CLIENTE": cliente_sel}
+                
+                itens_salvos = df_hist[(df_hist['DATA'] == data_sel) & (df_hist['CLIENTE'] == cliente_sel)]
+                st.session_state.cesta_orc = []
+                for _, linha in itens_salvos.iterrows():
+                    st.session_state.cesta_orc.append({
+                        "ITEM": linha["PRODUTO"],
+                        "DETALHES": str(linha["DETALHES"]).upper() if str(linha["DETALHES"]) != 'nan' else "",
+                        "QTD": int(linha["QT"]),
+                        "UNIT": float(linha["VALOR UNITARIO"]),
+                        "TOTAL": float(linha["VALOR TOTAL"])
+                    })
+                
+                if 'NOME REDUZIDO' in df_cli.columns:
+                    lista_nomes = sorted(df_cli['NOME REDUZIDO'].astype(str).unique().tolist())
+                    if cliente_sel in lista_nomes:
+                        st.session_state.idx_o = lista_nomes.index(cliente_sel)
+                
+                st.success(f"Orçamento de {cliente_sel} carregado! Ao salvar, o antigo será substituído.")
+                st.rerun()
+
 # --- 1. CLIENTE ---
 st.subheader("1. Identificação do Cliente")
 c_b, c_l = st.columns([3, 1])
