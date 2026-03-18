@@ -157,34 +157,15 @@ st.title("📄 Novo Orçamento")
 # --- INÍCIO DO BLOCO DE BUSCA E EDIÇÃO ---
 with st.expander("🔍 BUSCAR ORÇAMENTO ANTIGO PARA EDITAR", expanded=False):
     df_hist = conn.read(worksheet="Orcamentos", ttl=0).dropna(how='all')
-
+    
     if not df_hist.empty:
-        # Padronizamos as colunas para evitar erro de maiúsculas/minúsculas
-        df_hist.columns = [str(c).strip().upper() for c in df_hist.columns]
-        
-        # Criamos uma coluna de busca que contém DATA, CLIENTE e CNPJ (se existir)
-        def montar_opcao(row):
-            data = str(row.get('DATA', ''))
-            cliente = str(row.get('CLIENTE', '')).upper()
-            cnpj = str(row.get('CNPJ', '')) if row.get('CNPJ') else ""
-            return f"{data} - {cliente} {'(' + cnpj + ')' if cnpj else ''}"
-
-        df_hist['OPCAO'] = df_hist.apply(montar_opcao, axis=1)
-        
+        df_hist['OPCAO'] = df_hist['DATA'].astype(str) + " - " + df_hist['CLIENTE'].astype(str)
         lista_orc = sorted(df_hist['OPCAO'].unique().tolist(), reverse=True)
-        orc_escolhido = st.selectbox("Busque por Nome, Data ou CNPJ:", [""] + lista_orc)
-
+        orc_escolhido = st.selectbox("Selecione um orçamento salvo:", [""] + lista_orc)
+        
         if orc_escolhido != "":
             if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
-                # Extraímos a data e o cliente (pegamos o que vem antes do primeiro " - ")
-                partes = orc_escolhido.split(" - ")
-                data_sel = partes[0]
-                # O nome do cliente está entre o primeiro " - " e o possível "(" do CNPJ
-                cliente_sel = partes[1].split(" (")[0] if "(" in partes[1] else partes[1]
-
-                st.session_state.editando_orc = {"DATA": data_sel, "CLIENTE": cliente_sel}
-                st.success(f"Orçamento de {cliente_sel} carregado!")
-                st.rerun()
+                data_sel, cliente_sel = orc_escolhido.split(" - ", 1)
                 
                 # --- NOVIDADE: Salvamos quem estamos editando para substituir depois ---
                 st.session_state.editando_orc = {"DATA": data_sel, "CLIENTE": cliente_sel}
