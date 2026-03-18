@@ -88,19 +88,28 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
         pdf.cell(43, h_linha, t, border=1, align="R")
         pdf.ln()
 
-    # --- 4. TOTAL E CONDIÇÕES GERAIS ---
+   # --- 4. TOTAL E CONDIÇÕES GERAIS ---
     pdf.ln(5)
     pdf.set_font("Helvetica", "B", 11)
+    
+    # Formatamos o valor e garantimos que a string seja compatível com a fonte
     tot_br = f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    
+    # Tratamento para evitar o erro 'latin-1' no valor total
+    tot_safe = tot_br.encode('latin-1', 'replace').decode('latin-1')
+    
     pdf.cell(147, 10, "VALOR TOTAL DA PROPOSTA:", align="R")
-    pdf.cell(43, 10, tot_br, align="R", ln=True)
+    pdf.cell(43, 10, tot_safe, align="R", ln=True)
     
     pdf.ln(5)
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(0, 5, "CONDIÇÕES GERAIS:", ln=True)
+    
     pdf.set_font("Helvetica", "", 9)
-    pdf.multi_cell(0, 5, clean(obs)) # Aqui as condições que você sentiu falta!
-
+    
+    # Tratamento para evitar erro nas observações (acentos e caracteres especiais)
+    obs_limpa = clean(obs).encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 5, obs_limpa)
     # --- 5. ASSINATURA ---
     pdf.ln(10)
     try:
