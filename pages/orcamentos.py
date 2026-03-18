@@ -93,14 +93,14 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf.cell(0, 10, "PROPOSTA COMERCIAL", ln=True, align="C", fill=True)
 
     # --- 3. TABELA DE PRODUTOS (Recuperada e Ampliada) ---
-    pdf.set_font("DejaVu", "B", 10)
+    pdf.set_font("Helvetica", "B", 10)
     pdf.cell(90, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
     pdf.cell(15, 8, "Qtd", border=1, align="C", fill=True)
     pdf.cell(42, 8, "Unitário", border=1, align="C", fill=True)
     pdf.cell(43, 8, "Total", border=1, align="C", fill=True)
     pdf.ln()
 
-    pdf.set_font("DejaVu", "", 9)
+    pdf.set_font("Helvetica", "", 9)
     for it in itens:
         x_start = pdf.get_x()
         y_start = pdf.get_y()
