@@ -136,7 +136,7 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     
     pdf.ln(5)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 5, "CONDIÇÕES GERAIS:", ln=True)
+    #pdf.cell(0, 5, "CONDIÇÕES GERAIS:", ln=True)
     
     pdf.set_font("Helvetica", "", 9)
     
