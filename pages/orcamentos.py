@@ -10,10 +10,7 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf = FPDF()
     pdf.add_page()
 
-    # --- ADICIONE ISSO NO INÍCIO DA FUNÇÃO DO PDF ---
-    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', unicode=True)
-    pdf.add_font('DejaVu', 'B', 'DejaVuSans-Bold.ttf', unicode=True)
-    
+  
     # Função para evitar erro de caracteres (Hífen longo, etc)
     
     #def clean(txt):
