@@ -41,7 +41,7 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     # --- 3. Aplicação nas Condições Gerais ---
     pdf.ln(5)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 5, limpar_para_pdf("CONDICOES GERAIS:"), ln=True)
+    #pdf.cell(0, 5, limpar_para_pdf("CONDICOES GERAIS:"), ln=True)
 
     pdf.set_font("Helvetica", "", 9)
     # Aqui limpamos as observações para o PDF não travar
