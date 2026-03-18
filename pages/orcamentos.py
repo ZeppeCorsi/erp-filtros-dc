@@ -94,7 +94,7 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
 
     # --- 3. TABELA DE PRODUTOS (Recuperada e Ampliada) ---
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(115, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
+    pdf.cell(130, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
     pdf.cell(10, 8, "Qtd", border=1, align="C", fill=True)
     pdf.cell(25, 8, "Unitário", border=1, align="C", fill=True)
     pdf.cell(25, 8, "Total", border=1, align="C", fill=True)
