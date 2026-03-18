@@ -15,9 +15,10 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf.add_font('DejaVu', 'B', 'DejaVuSans-Bold.ttf', unicode=True)
     
     # Função para evitar erro de caracteres (Hífen longo, etc)
-    def clean(txt):
-        if not txt: return ""
-        return str(txt).replace('—', '-').replace('–', '-').replace('“', '"').replace('”', '"')
+    
+    #def clean(txt):
+        #if not txt: return ""
+       # return str(txt).replace('—', '-').replace('–', '-').replace('“', '"').replace('”', '"')
 
     # --- 1. Função de limpeza (Coloque isso no topo da função do PDF ou antes de usar) ---
     def limpar_para_pdf(texto):
@@ -27,6 +28,8 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
         nfkd = unicodedata.normalize('NFKD', str(texto))
         texto_limpo = "".join([c for c in nfkd if not unicodedata.combining(c)])
         return texto_limpo.replace("R$", "RS").encode('ascii', 'ignore').decode('ascii')
+    def clean(txt):
+        return limpar_para_pdf(txt)
 
     # --- 2. Aplicação no Total ---
     pdf.ln(5)
