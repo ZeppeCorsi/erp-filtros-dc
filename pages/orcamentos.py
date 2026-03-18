@@ -260,11 +260,23 @@ if col_prod and col_preco:
         
         # Pegamos o preço bruto
         linha_prod = df_prod[df_prod[col_prod] == prod_sel]
-        p_bruto = linha_prod[col_preco].values[0] if not linha_prod.empty else 0.0
+        # Inicializamos as variáveis vazias
+        preco_unit = 0.0
+        caract_sugerida = ""
         if not linha_prod.empty:
-        # Pega o valor da coluna CARACTERISTICAS
+            # Busca Preço
+            p_bruto = linha_prod[col_preco].values[0]
+            if isinstance(p_bruto, str): 
+                p_bruto = p_bruto.replace('.', '').replace(',', '.')
+            try:
+                preco_unit = float(p_bruto)
+            except:
+                preco_unit = 0.0
+            
+            # Busca Característica
             val = linha_prod.iloc[0].get('CARACTERISTICAS', '')
             caract_sugerida = str(val) if str(val) != 'nan' else ""
+        
         # Tratamento de número se vier como texto (Ex: 1.500,00)
         if isinstance(p_bruto, str): 
             p_bruto = p_bruto.replace('.', '').replace(',', '.')
