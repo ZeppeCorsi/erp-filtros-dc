@@ -245,8 +245,7 @@ else:
 # --- 2. PRODUTOS COM DETALHES ---
 st.subheader("2. Itens do Orçamento")
 
-# AJUSTE 2: Forçamos a busca pelas colunas exatas que estão no seu arquivo de Produtos
-# No seu Produtos.py as colunas são 'NOME' e 'PRECO'
+# AJUSTE 2: Busca pelas colunas exatas
 col_prod = "NOME" if "NOME" in df_prod.columns else next((c for c in df_prod.columns if 'DESCRI' in c or 'PRODUTO' in c), None)
 col_preco = "PRECO" if "PRECO" in df_prod.columns else next((c for c in df_prod.columns if 'LISTA' in c or 'VALOR' in c), None)
 
@@ -254,55 +253,43 @@ if col_prod and col_preco:
     with st.container(border=True):
         c3, c4, c5 = st.columns([2, 1, 1])
         
-        # Pegamos a lista de nomes de produtos
+        # 1. Lista de Produtos
         lista_prods = df_prod[col_prod].dropna().unique().tolist()
-        prod_sel = c3.selectbox("Produto", options=lista_prods)
+        prod_sel = c3.selectbox("Produto", options=[""] + lista_prods) # Adicionei o vazio para começar limpo
         
-        # Pegamos o preço bruto
-        linha_prod = df_prod[df_prod[col_prod] == prod_sel]
-        # Inicializamos as variáveis vazias
+        # 2. Inicialização de variáveis de busca
         preco_unit = 0.0
         caract_sugerida = ""
-        if not linha_prod.empty:
-            # Busca Preço
-            p_bruto = linha_prod[col_preco].values[0]
-            if isinstance(p_bruto, str): 
-                p_bruto = p_bruto.replace('.', '').replace(',', '.')
-            try:
-                preco_unit = float(p_bruto)
-            except:
-                preco_unit = 0.0
-            
-            # Busca Característica
-            val = linha_prod.iloc[0].get('CARACTERISTICAS', '')
-            caract_sugerida = str(val) if str(val) != 'nan' else ""
         
-        # Tratamento de número se vier como texto (Ex: 1.500,00)
-        if isinstance(p_bruto, str): 
-            p_bruto = p_bruto.replace('.', '').replace(',', '.')
-        
-        try:
-            preco_unit = float(p_bruto)
-        except:
-            preco_unit = 0.0
+        # 3. Busca de Dados na Planilha (Preço e Característica)
+        if prod_sel != "":
+            linha_prod = df_prod[df_prod[col_prod] == prod_sel]
+            if not linha_prod.empty:
+                # Busca Preço
+                p_bruto = linha_prod[col_preco].values[0]
+                if isinstance(p_bruto, str): 
+                    p_bruto = p_bruto.replace('.', '').replace(',', '.')
+                try:
+                    preco_unit = float(p_bruto)
+                except:
+                    preco_unit = 0.0
+                
+                # Busca Característica (IMPORTANTE: Não zerar depois daqui!)
+                val = linha_prod.iloc[0].get('CARACTERISTICAS', '')
+                caract_sugerida = str(val) if str(val) != 'nan' else ""
 
+        # 4. Campos de Entrada de Usuário
         qtd = c4.number_input("QTD", min_value=1, value=1)
+        # O value do preço unitário agora é o preco_unit que buscamos acima
         valor_u = c5.number_input("Preço Unit (R$)", min_value=0.0, value=preco_unit, format="%.2f")
         
-        #detalhes_item = st.text_area("🔧 Detalhes Técnicos deste Item", placeholder="Ex: Material, conexões...")
-        # 2. BUSCA DA CARACTERÍSTICA (Inclua isso LOGO ANTES da linha 277)
-        caract_sugerida = ""
-        if prod_sel != "":
-        # Filtra o dataframe de produtos para achar a linha do produto selecionado
-        #linha_produto = df_produtos[df_produtos['NOME'] == produto_sel]
-        
-
-        # 3. LINHA 277 (Atualizada com a variável caract_sugerida)
-            detalhes_item = st.text_area(
+        # 5. Área de Detalhes Técnicos (Fora de IFs extras para evitar erros)
+        detalhes_item = st.text_area(
             "🔧 Detalhes Técnicos deste Item", 
             value=caract_sugerida, 
-            height=150
-            )
+            height=150,
+            placeholder="As características aparecerão aqui automaticamente..."
+        )
 
         if st.button("➕ ADICIONAR AO ORÇAMENTO", use_container_width=True):
             st.session_state.cesta_orc.append({
