@@ -100,18 +100,18 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf.cell(43, 8, "Total", border=1, align="C", fill=True)
     pdf.ln()
 
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font("Helvetica", "", 8)
     for it in itens:
         x_start = pdf.get_x()
         y_start = pdf.get_y()
         
         # Descrição com MultiCell para as especificações técnicas
-        pdf.multi_cell(90, 5, clean(f"{it['ITEM']}\n{it['DETALHES']}"), border=1)
+        pdf.multi_cell(115, 5, clean(f"{it['ITEM']}\n{it['DETALHES']}"), border=1)
         y_end = pdf.get_y()
         h_linha = y_end - y_start
         
         # Colunas laterais
-        pdf.set_xy(x_start + 90, y_start)
+        pdf.set_xy(x_start + 115, y_start)
         pdf.cell(15, h_linha, str(it['QTD']), border=1, align="C")
         
         u = f"R$ {it['UNIT']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
