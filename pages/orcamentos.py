@@ -94,10 +94,10 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
 
     # --- 3. TABELA DE PRODUTOS (Recuperada e Ampliada) ---
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(90, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
-    pdf.cell(15, 8, "Qtd", border=1, align="C", fill=True)
-    pdf.cell(42, 8, "Unitário", border=1, align="C", fill=True)
-    pdf.cell(43, 8, "Total", border=1, align="C", fill=True)
+    pdf.cell(115, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
+    pdf.cell(10, 8, "Qtd", border=1, align="C", fill=True)
+    pdf.cell(30, 8, "Unitário", border=1, align="C", fill=True)
+    pdf.cell(30, 8, "Total", border=1, align="C", fill=True)
     pdf.ln()
 
     pdf.set_font("Helvetica", "", 8)
@@ -112,13 +112,13 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
         
         # Colunas laterais
         pdf.set_xy(x_start + 115, y_start)
-        pdf.cell(15, h_linha, str(it['QTD']), border=1, align="C")
+        pdf.cell(10, h_linha, str(it['QTD']), border=1, align="C")
         
         u = f"R$ {it['UNIT']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         t = f"R$ {it['TOTAL']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         
-        pdf.cell(42, h_linha, u, border=1, align="R")
-        pdf.cell(43, h_linha, t, border=1, align="R")
+        pdf.cell(30, h_linha, u, border=1, align="R")
+        pdf.cell(30, h_linha, t, border=1, align="R")
         pdf.ln()
 
    # --- 4. TOTAL E CONDIÇÕES GERAIS ---
