@@ -9,6 +9,10 @@ from datetime import datetime
 def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato, email, tel):
     pdf = FPDF()
     pdf.add_page()
+
+    # --- ADICIONE ISSO NO INÍCIO DA FUNÇÃO DO PDF ---
+    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', unicode=True)
+    pdf.add_font('DejaVu', 'B', 'DejaVuSans-Bold.ttf', unicode=True)
     
     # Função para evitar erro de caracteres (Hífen longo, etc)
     def clean(txt):
@@ -60,14 +64,14 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf.cell(0, 10, "PROPOSTA COMERCIAL", ln=True, align="C", fill=True)
 
     # --- 3. TABELA DE PRODUTOS (Recuperada e Ampliada) ---
-    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_font("DejaVu", "B", 10)
     pdf.cell(90, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
     pdf.cell(15, 8, "Qtd", border=1, align="C", fill=True)
     pdf.cell(42, 8, "Unitário", border=1, align="C", fill=True)
     pdf.cell(43, 8, "Total", border=1, align="C", fill=True)
     pdf.ln()
 
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font("DejaVu", "", 9)
     for it in itens:
         x_start = pdf.get_x()
         y_start = pdf.get_y()
@@ -257,7 +261,10 @@ if col_prod and col_preco:
         # Pegamos o preço bruto
         linha_prod = df_prod[df_prod[col_prod] == prod_sel]
         p_bruto = linha_prod[col_preco].values[0] if not linha_prod.empty else 0.0
-        
+        if not linha_prod.empty:
+        # Pega o valor da coluna CARACTERISTICAS
+            val = linha_prod.iloc[0].get('CARACTERISTICAS', '')
+            caract_sugerida = str(val) if str(val) != 'nan' else ""
         # Tratamento de número se vier como texto (Ex: 1.500,00)
         if isinstance(p_bruto, str): 
             p_bruto = p_bruto.replace('.', '').replace(',', '.')
@@ -270,7 +277,20 @@ if col_prod and col_preco:
         qtd = c4.number_input("QTD", min_value=1, value=1)
         valor_u = c5.number_input("Preço Unit (R$)", min_value=0.0, value=preco_unit, format="%.2f")
         
-        detalhes_item = st.text_area("🔧 Detalhes Técnicos deste Item", placeholder="Ex: Material, conexões...")
+        #detalhes_item = st.text_area("🔧 Detalhes Técnicos deste Item", placeholder="Ex: Material, conexões...")
+        # 2. BUSCA DA CARACTERÍSTICA (Inclua isso LOGO ANTES da linha 277)
+        caract_sugerida = ""
+        if prod_sel != "":
+        # Filtra o dataframe de produtos para achar a linha do produto selecionado
+        #linha_produto = df_produtos[df_produtos['NOME'] == produto_sel]
+        
+
+        # 3. LINHA 277 (Atualizada com a variável caract_sugerida)
+            detalhes_item = st.text_area(
+            "🔧 Detalhes Técnicos deste Item", 
+            value=caract_sugerida, 
+            height=150
+            )
 
         if st.button("➕ ADICIONAR AO ORÇAMENTO", use_container_width=True):
             st.session_state.cesta_orc.append({
