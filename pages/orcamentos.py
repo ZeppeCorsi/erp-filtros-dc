@@ -35,8 +35,8 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     # Formatamos o valor (1.350,00)
     valor_formatado = f"RS {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-    pdf.cell(147, 10, limpar_para_pdf("VALOR TOTAL DA PROPOSTA:"), align="R")
-    pdf.cell(43, 10, valor_formatado, align="R", ln=True)
+    #pdf.cell(147, 10, limpar_para_pdf("VALOR TOTAL DA PROPOSTA:"), align="R")
+    #pdf.cell(43, 10, valor_formatado, align="R", ln=True)
 
     # --- 3. Aplicação nas Condições Gerais ---
     pdf.ln(5)
