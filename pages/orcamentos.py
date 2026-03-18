@@ -19,6 +19,35 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
         if not txt: return ""
         return str(txt).replace('—', '-').replace('–', '-').replace('“', '"').replace('”', '"')
 
+    # --- 1. Função de limpeza (Coloque isso no topo da função do PDF ou antes de usar) ---
+    def limpar_para_pdf(texto):
+        if not texto: return ""
+        # Troca o símbolo R$ por RS, remove acentos e caracteres especiais que travam a Helvetica
+        import unicodedata
+        nfkd = unicodedata.normalize('NFKD', str(texto))
+        texto_limpo = "".join([c for c in nfkd if not unicodedata.combining(c)])
+        return texto_limpo.replace("R$", "RS").encode('ascii', 'ignore').decode('ascii')
+
+    # --- 2. Aplicação no Total ---
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 11)
+
+    # Formatamos o valor (1.350,00)
+    valor_formatado = f"RS {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+    pdf.cell(147, 10, limpar_para_pdf("VALOR TOTAL DA PROPOSTA:"), align="R")
+    pdf.cell(43, 10, valor_formatado, align="R", ln=True)
+
+    # --- 3. Aplicação nas Condições Gerais ---
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 5, limpar_para_pdf("CONDICOES GERAIS:"), ln=True)
+
+    pdf.set_font("Helvetica", "", 9)
+    # Aqui limpamos as observações para o PDF não travar
+    pdf.multi_cell(0, 5, limpar_para_pdf(obs))
+
+
     # --- 1. CABEÇALHO ---
     try:
         pdf.image("LOGO Fundo Branco Puro.png", x=10, y=8, w=50)
