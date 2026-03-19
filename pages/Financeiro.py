@@ -14,48 +14,47 @@ if 'logado' not in st.session_state or not st.session_state.logado:
 # 3. CONEXÃO
 conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
 
-# --- CARREGAMENTO E TRATAMENTO DE DADOS ---
-# --- CARREGAMENTO COM DIAGNÓSTICO ---
+# --- CARREGAMENTO COM PROTEÇÃO TOTAL ---
 try:
-    # 1. Leitura bruta sem cache para forçar atualização
     df_fluxo_raw = conn.read(worksheet="Fluxo de Caixa", ttl=0)
     df_gastos_raw = conn.read(worksheet="Gastos Fixos", ttl=0)
 
-    # 2. MOSTRAR COLUNAS PARA DIAGNÓSTICO (Aparecerá se der erro)
-    # st.write("Colunas lidas:", df_fluxo_raw.columns.tolist()) 
-
-    # 3. LIMPEZA TOTAL DE CABEÇALHO
-    # Remove espaços, aspas, e converte tudo para string antes de tratar
+    # Limpeza de colunas
     df_fluxo = df_fluxo_raw.copy()
-    df_fluxo.columns = [str(c).strip().upper().replace('"', '').replace("'", "") for c in df_fluxo.columns]
+    df_fluxo.columns = [str(c).strip().upper().replace('"', '') for c in df_fluxo.columns]
     
     df_gastos_fixos = df_gastos_raw.copy()
-    df_gastos_fixos.columns = [str(c).strip().upper().replace('"', '').replace("'", "") for c in df_gastos_fixos.columns]
+    df_gastos_fixos.columns = [str(c).strip().upper().replace('"', '') for c in df_gastos_fixos.columns]
 
-    # 4. VERIFICAÇÃO DE SEGURANÇA: Se 'VALOR' não for achado, vamos procurar por qualquer coluna que contenha 'VALOR'
+    # --- CORREÇÃO PARA GASTOS FIXOS (Onde deu o erro na imagem) ---
+    # Se não achar 'VALOR', ele tenta pegar a segunda coluna da planilha
+    if 'VALOR' not in df_gastos_fixos.columns:
+        # Pega a segunda coluna independente do nome (geralmente onde fica o valor)
+        df_gastos_fixos.rename(columns={df_gastos_fixos.columns[1]: 'VALOR'}, inplace=True)
+    
+    # --- CORREÇÃO PARA FLUXO DE CAIXA ---
     if 'VALOR' not in df_fluxo.columns:
-        # Tenta achar uma coluna parecida (ex: 'VALOR ' ou 'VALOR.1')
-        possiveis = [c for c in df_fluxo.columns if 'VALOR' in c]
-        if possiveis:
-            df_fluxo.rename(columns={possiveis[0]: 'VALOR'}, inplace=True)
-        else:
-            st.error(f"⚠️ A coluna 'VALOR' não foi encontrada. Colunas disponíveis: {df_fluxo.columns.tolist()}")
-            st.stop()
+        # Procura qualquer coluna que tenha a palavra VALOR no nome
+        col_valor = [c for c in df_fluxo.columns if 'VALOR' in c]
+        if col_valor:
+            df_fluxo.rename(columns={col_valor[0]: 'VALOR'}, inplace=True)
 
-    # 5. CONVERSÃO
+    # Conversão numérica segura
     df_fluxo['VALOR'] = pd.to_numeric(df_fluxo['VALOR'], errors='coerce').fillna(0)
     df_gastos_fixos['VALOR'] = pd.to_numeric(df_gastos_fixos['VALOR'], errors='coerce').fillna(0)
 
-    # ... RESTO DO CÓDIGO DO DASHBOARD ...
+    # Garantir STATUS e TIPO (Resolve erro da image_aadc01.png)
+    for col in ['STATUS', 'TIPO']:
+        if col in df_fluxo.columns:
+            df_fluxo[col] = df_fluxo[col].astype(str).str.strip().upper()
+        else:
+            df_fluxo[col] = "PENDENTE" if col == 'STATUS' else "SAIDA"
+
+    # ... RESTO DO CÓDIGO (DASHBOARD E ABAS) ...
 
 except Exception as e:
-    st.error(f"❌ Erro crítico ao processar: {e}")
-    # Isso vai nos mostrar onde exatamente o pandas travou
-    import traceback
-    st.code(traceback.format_exc())
-    # Garante que a coluna NF existe (Coluna H na sua imagem)
-    if 'NF' not in df_fluxo.columns:
-        df_fluxo['NF'] = ""
+    st.error(f"Erro ao processar: {e}")
+    st.info("Verifique se as colunas na aba 'Gastos Fixos' estão corretas.")
 
     # 4. DASHBOARD DE SALDO
     st.title("🏦 Gestão Financeira - Filtros DC")
