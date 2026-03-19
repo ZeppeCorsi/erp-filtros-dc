@@ -43,72 +43,71 @@ try:
     # --- 4. DASHBOARD ---
     st.title("🏦 Gestão Financeira - Filtros DC")
     
-    # Filtros para o Saldo Real
-    recebido = df_fluxo[(df_fluxo['TIPO'] == 'ENTRADA') & (df_fluxo['STATUS'] == 'RECEBIDO')]['VALOR'].sum()
-    pago = df_fluxo[(df_fluxo['TIPO'] == 'SAIDA') & (df_fluxo['STATUS'] == 'PAGO')]['VALOR'].sum()
-    saldo_atual = recebido - pago
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Saldo Real (Extrato)", f"R$ {saldo_atual:,.2f}")
-    
-    a_receber = df_fluxo[(df_fluxo['TIPO'] == 'ENTRADA') & (df_fluxo['STATUS'] == 'PENDENTE')]['VALOR'].sum()
-    c2.metric("A Receber", f"R$ {a_receber:,.2f}")
-    
-    a_pagar = df_fluxo[(df_fluxo['TIPO'] == 'SAIDA') & (df_fluxo['STATUS'] == 'PENDENTE')]['VALOR'].sum()
-    c3.metric("A Pagar", f"R$ {a_pagar:,.2f}")
-
-    st.divider()
-
-    # --- 5. ABAS ---
-    t1, t2, t3 = st.tabs(["📄 Extrato", "✅ Dar Baixa / NF", "⚙️ Gerar Mensalidade"])
+   # --- 5. ABAS REFORMULADAS ---
+    t1, t2, t3, t4 = st.tabs(["📄 Extrato Geral", "📅 Fluxo Futuro", "✅ Baixa / NF", "⚙️ Lançar Gasto Fixo"])
 
     with t1:
-        st.subheader("Histórico de Movimentações")
-        st.dataframe(df_fluxo[['DATA', 'CLIENTE', 'VALOR', 'STATUS', 'NF']].sort_index(ascending=False), use_container_width=True)
+        st.subheader("Histórico Completo")
+        # Mostramos a coluna TIPO para você saber o que é Entrada e o que é Saída
+        st.dataframe(df_fluxo[['DATA', 'TIPO', 'CLIENTE', 'VALOR', 'STATUS', 'NF']].sort_index(ascending=False), use_container_width=True)
 
     with t2:
+        st.subheader("Previsão de Entradas e Saídas")
+        data_alvo = st.date_input("Ver movimentações até:", datetime.now())
+        data_alvo_str = data_alvo.strftime("%d/%m/%Y")
+        
+        # Filtra apenas o que é PENDENTE e bate com a data
+        previsao = df_fluxo[(df_fluxo['STATUS'] == 'PENDENTE')]
+        st.write(f"Itens pendentes aguardados:")
+        st.dataframe(previsao[['DATA', 'TIPO', 'CLIENTE', 'VALOR']], use_container_width=True)
+
+    with t3:
         st.subheader("Confirmar Recebimento/Pagamento")
         df_pend = df_fluxo[df_fluxo['STATUS'] == 'PENDENTE'].copy()
-        
         if not df_pend.empty:
-            opcoes = df_pend.apply(lambda x: f"{x['CLIENTE']} | R$ {x['VALOR']:.2f}", axis=1).tolist()
-            escolha = st.selectbox("Selecione o lançamento:", opcoes)
-            nova_nf = st.text_input("Número da NF (opcional):")
+            opcoes = df_pend.apply(lambda x: f"{x['DATA']} | {x['CLIENTE']} (R$ {x['VALOR']:.2f})", axis=1).tolist()
+            escolha = st.selectbox("Selecione para dar baixa:", opcoes)
+            nova_nf = st.text_input("Vincular NF:")
             
             if st.button("Confirmar Baixa"):
                 idx = df_pend.index[opcoes.index(escolha)]
                 tipo = df_fluxo.at[idx, 'TIPO']
-                
                 df_fluxo.at[idx, 'STATUS'] = "RECEBIDO" if tipo == "ENTRADA" else "PAGO"
-                if nova_nf:
-                    df_fluxo.at[idx, 'NF'] = nova_nf
+                if nova_nf: df_fluxo.at[idx, 'NF'] = nova_nf
                 
                 conn.update(worksheet="Fluxo de Caixa", data=df_fluxo)
-                st.success("Baixa realizada e planilha atualizada!")
+                st.success("Status atualizado na planilha!")
                 st.rerun()
         else:
-            st.info("Não há itens pendentes.")
+            st.info("Nada pendente para baixar.")
 
-    with t3:
-        st.subheader("Gerar Gastos do Mês")
-        mes = st.selectbox("Selecione o Mês:", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"])
+    with t4:
+        st.subheader("Lançamento Individual de Gasto Fixo")
+        st.write("Escolha um item da sua lista de custos para enviar ao Fluxo:")
         
-        if st.button("Lançar Gastos Fixos"):
-            novos_lancamentos = []
-            for _, linha in df_gastos_fixos.iterrows():
-                novos_lancamentos.append({
-                    "DATA": datetime.now().strftime("%d/%m/%Y"),
-                    "TIPO": "SAIDA",
-                    "CLIENTE": f"{linha['DETALHE']} ({mes})",
-                    "VALOR": linha['VALOR'],
-                    "STATUS": "PENDENTE",
-                    "NF": ""
-                })
+        # Lista os gastos da sua aba 'Gastos Fixos' (Coluna DETALHE da image_aacce1)
+        lista_gastos = df_gastos_fixos['DETALHE'].tolist()
+        gasto_selecionado = st.selectbox("Qual conta deseja lançar?", lista_gastos)
+        
+        # Busca o valor automático desse gasto
+        valor_sugerido = df_gastos_fixos[df_gastos_fixos['DETALHE'] == gasto_selecionado]['VALOR'].values[0]
+        valor_final = st.number_input("Confirme o Valor (R$):", value=float(valor_sugerido))
+        data_lancamento = st.date_input("Data do Vencimento:", datetime.now())
+        
+        if st.button("Lançar no Fluxo de Caixa"):
+            novo_item = pd.DataFrame([{
+                "DATA": data_lancamento.strftime("%d/%m/%Y"),
+                "TIPO": "SAIDA",
+                "CLIENTE": gasto_selecionado,
+                "VALOR": valor_final,
+                "STATUS": "PENDENTE",
+                "NF": ""
+            }])
             
-            df_atualizado = pd.concat([df_fluxo, pd.DataFrame(novos_lancamentos)], ignore_index=True)
+            df_atualizado = pd.concat([df_fluxo, novo_item], ignore_index=True)
             conn.update(worksheet="Fluxo de Caixa", data=df_atualizado)
-            st.success(f"Gastos de {mes} lançados como pendentes!")
+            st.success(f"{gasto_selecionado} adicionado ao Fluxo como pendente!")
             st.rerun()
 
 except Exception as e:
-    st.error(f"Erro inesperado: {e}")
+    st.error(f"Erro: {e}")
