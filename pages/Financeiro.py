@@ -15,23 +15,44 @@ if 'logado' not in st.session_state or not st.session_state.logado:
 conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
 
 # --- CARREGAMENTO E TRATAMENTO DE DADOS ---
+# --- CARREGAMENTO COM DIAGNÓSTICO ---
 try:
-    # Lendo as abas
+    # 1. Leitura bruta sem cache para forçar atualização
     df_fluxo_raw = conn.read(worksheet="Fluxo de Caixa", ttl=0)
     df_gastos_raw = conn.read(worksheet="Gastos Fixos", ttl=0)
 
-    # 🛠️ LIMPEZA BRUTA DE COLUNAS (Para matar o erro 'VALOR')
-    # Isso remove aspas, espaços e deixa tudo em MAIÚSCULO
+    # 2. MOSTRAR COLUNAS PARA DIAGNÓSTICO (Aparecerá se der erro)
+    # st.write("Colunas lidas:", df_fluxo_raw.columns.tolist()) 
+
+    # 3. LIMPEZA TOTAL DE CABEÇALHO
+    # Remove espaços, aspas, e converte tudo para string antes de tratar
     df_fluxo = df_fluxo_raw.copy()
     df_fluxo.columns = [str(c).strip().upper().replace('"', '').replace("'", "") for c in df_fluxo.columns]
     
     df_gastos_fixos = df_gastos_raw.copy()
     df_gastos_fixos.columns = [str(c).strip().upper().replace('"', '').replace("'", "") for c in df_gastos_fixos.columns]
 
-    # Agora o Python VAI achar 'VALOR'
+    # 4. VERIFICAÇÃO DE SEGURANÇA: Se 'VALOR' não for achado, vamos procurar por qualquer coluna que contenha 'VALOR'
+    if 'VALOR' not in df_fluxo.columns:
+        # Tenta achar uma coluna parecida (ex: 'VALOR ' ou 'VALOR.1')
+        possiveis = [c for c in df_fluxo.columns if 'VALOR' in c]
+        if possiveis:
+            df_fluxo.rename(columns={possiveis[0]: 'VALOR'}, inplace=True)
+        else:
+            st.error(f"⚠️ A coluna 'VALOR' não foi encontrada. Colunas disponíveis: {df_fluxo.columns.tolist()}")
+            st.stop()
+
+    # 5. CONVERSÃO
     df_fluxo['VALOR'] = pd.to_numeric(df_fluxo['VALOR'], errors='coerce').fillna(0)
     df_gastos_fixos['VALOR'] = pd.to_numeric(df_gastos_fixos['VALOR'], errors='coerce').fillna(0)
 
+    # ... RESTO DO CÓDIGO DO DASHBOARD ...
+
+except Exception as e:
+    st.error(f"❌ Erro crítico ao processar: {e}")
+    # Isso vai nos mostrar onde exatamente o pandas travou
+    import traceback
+    st.code(traceback.format_exc())
     # Garante que a coluna NF existe (Coluna H na sua imagem)
     if 'NF' not in df_fluxo.columns:
         df_fluxo['NF'] = ""
