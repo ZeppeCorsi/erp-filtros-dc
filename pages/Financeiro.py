@@ -41,73 +41,104 @@ try:
     df_gastos_fixos['VALOR'] = pd.to_numeric(df_gastos_fixos['VALOR'], errors='coerce').fillna(0)
 
     # --- 4. DASHBOARD ---
+# --- FILTRO DE EXTRATO (TIPO BANCÁRIO) ---
     st.title("🏦 Gestão Financeira - Filtros DC")
     
-   # --- 5. ABAS REFORMULADAS ---
-    t1, t2, t3, t4 = st.tabs(["📄 Extrato Geral", "📅 Fluxo Futuro", "✅ Baixa / NF", "⚙️ Lançar Gasto Fixo"])
+    # Criamos as opções de Meses baseados nas datas que existem na planilha
+    df_fluxo['DT_OBJ'] = pd.to_datetime(df_fluxo['DATA'], dayfirst=True, errors='coerce')
+    df_fluxo = df_fluxo.dropna(subset=['DT_OBJ']).sort_values('DT_OBJ') # Ordena cronológico
+    
+    # Criar lista de meses disponíveis: "Março/2026"
+    df_fluxo['MES_REF'] = df_fluxo['DT_OBJ'].dt.strftime('%m/%Y')
+    meses_disponiveis = ["Tudo"] + sorted(df_fluxo['MES_REF'].unique().tolist(), key=lambda x: datetime.strptime(x, '%m/%Y'))
+    
+    col_f1, col_f2 = st.columns([2, 4])
+    mes_filtro = col_f1.selectbox("Selecione o período do extrato:", meses_disponiveis, index=len(meses_disponiveis)-1)
+
+    # Filtragem dos dados
+    if mes_filtro == "Tudo":
+        df_exibir = df_fluxo.copy()
+    else:
+        df_exibir = df_fluxo[df_fluxo['MES_REF'] == mes_filtro].copy()
+
+    # --- MÉTRICAS (Baseadas no filtro selecionado) ---
+    recebido = df_exibir[(df_exibir['TIPO'] == 'ENTRADA') & (df_exibir['STATUS'] == 'RECEBIDO')]['VALOR'].sum()
+    pago = df_exibir[(df_exibir['TIPO'] == 'SAIDA') & (df_exibir['STATUS'] == 'PAGO')]['VALOR'].sum()
+    saldo_periodo = recebido - pago
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric(f"Saldo Real ({mes_filtro})", f"R$ {saldo_periodo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    
+    a_receber = df_exibir[(df_exibir['TIPO'] == 'ENTRADA') & (df_exibir['STATUS'] == 'PENDENTE')]['VALOR'].sum()
+    c2.metric("A Receber no período", f"R$ {a_receber:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    
+    a_pagar = df_exibir[(df_exibir['TIPO'] == 'SAIDA') & (df_exibir['STATUS'] == 'PENDENTE')]['VALOR'].sum()
+    c3.metric("A Pagar no período", f"R$ {a_pagar:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    st.divider()
+
+    # --- ABAS ---
+    t1, t2, t3, t4 = st.tabs(["📄 Extrato Detalhado", "📅 Previsão Futura", "✅ Baixa / NF", "⚙️ Lançar Gasto Fixo"])
 
     with t1:
-        st.subheader("Histórico Completo")
-        # Mostramos a coluna TIPO para você saber o que é Entrada e o que é Saída
-        st.dataframe(df_fluxo[['DATA', 'TIPO', 'CLIENTE', 'VALOR', 'STATUS', 'NF']].sort_index(ascending=False), use_container_width=True)
+        st.subheader(f"Movimentações: {mes_filtro}")
+        # Formata a coluna VALOR apenas para exibição na tabela
+        df_tab = df_exibir[['DATA', 'TIPO', 'CLIENTE', 'VALOR', 'STATUS', 'NF']].copy()
+        df_tab['VALOR'] = df_tab['VALOR'].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        st.dataframe(df_tab, use_container_width=True, hide_index=True)
 
     with t2:
-        st.subheader("Previsão de Entradas e Saídas")
-        data_alvo = st.date_input("Ver movimentações até:", datetime.now())
-        data_alvo_str = data_alvo.strftime("%d/%m/%Y")
-        
-        # Filtra apenas o que é PENDENTE e bate com a data
-        previsao = df_fluxo[(df_fluxo['STATUS'] == 'PENDENTE')]
-        st.write(f"Itens pendentes aguardados:")
-        st.dataframe(previsao[['DATA', 'TIPO', 'CLIENTE', 'VALOR']], use_container_width=True)
+        st.subheader("O que ainda vai acontecer")
+        previsao = df_exibir[df_exibir['STATUS'] == 'PENDENTE'].copy()
+        if not previsao.empty:
+            previsao['VALOR'] = previsao['VALOR'].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            st.dataframe(previsao[['DATA', 'TIPO', 'CLIENTE', 'VALOR']], use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma pendência para o período selecionado.")
 
     with t3:
-        st.subheader("Confirmar Recebimento/Pagamento")
-        df_pend = df_fluxo[df_fluxo['STATUS'] == 'PENDENTE'].copy()
+        st.subheader("Dar Baixa Individual")
+        df_pend = df_exibir[df_exibir['STATUS'] == 'PENDENTE'].copy()
         if not df_pend.empty:
             opcoes = df_pend.apply(lambda x: f"{x['DATA']} | {x['CLIENTE']} (R$ {x['VALOR']:.2f})", axis=1).tolist()
-            escolha = st.selectbox("Selecione para dar baixa:", opcoes)
-            nova_nf = st.text_input("Vincular NF:")
+            escolha = st.selectbox("Selecione o item:", opcoes)
+            nova_nf = st.text_input("Vincular NF (Opcional):")
             
-            if st.button("Confirmar Baixa"):
-                idx = df_pend.index[opcoes.index(escolha)]
-                tipo = df_fluxo.at[idx, 'TIPO']
-                df_fluxo.at[idx, 'STATUS'] = "RECEBIDO" if tipo == "ENTRADA" else "PAGO"
-                if nova_nf: df_fluxo.at[idx, 'NF'] = nova_nf
+            if st.button("Confirmar Pagamento/Recebimento"):
+                idx_orig = df_pend.index[opcoes.index(escolha)]
+                tipo_item = df_fluxo.at[idx_orig, 'TIPO']
+                df_fluxo.at[idx_orig, 'STATUS'] = "RECEBIDO" if tipo_item == "ENTRADA" else "PAGO"
+                if nova_nf: df_fluxo.at[idx_orig, 'NF'] = nova_nf
                 
-                conn.update(worksheet="Fluxo de Caixa", data=df_fluxo)
-                st.success("Status atualizado na planilha!")
+                # Salva na planilha mantendo as colunas originais (sem as de ajuda DT_OBJ)
+                conn.update(worksheet="Fluxo de Caixa", data=df_fluxo.drop(columns=['DT_OBJ', 'MES_REF']))
+                st.success("Baixa realizada com sucesso!")
                 st.rerun()
         else:
-            st.info("Nada pendente para baixar.")
+            st.info("Nada para baixar neste mês.")
 
     with t4:
-        st.subheader("Lançamento Individual de Gasto Fixo")
-        st.write("Escolha um item da sua lista de custos para enviar ao Fluxo:")
+        st.subheader("Lançar Item dos Gastos Fixos")
+        item_fixo = st.selectbox("Selecione o custo:", df_gastos_fixos['DETALHE'].tolist())
+        valor_base = df_gastos_fixos[df_gastos_fixos['DETALHE'] == item_fixo]['VALOR'].values[0]
         
-        # Lista os gastos da sua aba 'Gastos Fixos' (Coluna DETALHE da image_aacce1)
-        lista_gastos = df_gastos_fixos['DETALHE'].tolist()
-        gasto_selecionado = st.selectbox("Qual conta deseja lançar?", lista_gastos)
+        col1, col2 = st.columns(2)
+        novo_valor = col1.number_input("Confirmar Valor:", value=float(valor_base))
+        nova_data = col2.date_input("Data de Vencimento:", datetime.now())
         
-        # Busca o valor automático desse gasto
-        valor_sugerido = df_gastos_fixos[df_gastos_fixos['DETALHE'] == gasto_selecionado]['VALOR'].values[0]
-        valor_final = st.number_input("Confirme o Valor (R$):", value=float(valor_sugerido))
-        data_lancamento = st.date_input("Data do Vencimento:", datetime.now())
-        
-        if st.button("Lançar no Fluxo de Caixa"):
-            novo_item = pd.DataFrame([{
-                "DATA": data_lancamento.strftime("%d/%m/%Y"),
+        if st.button("Enviar para Fluxo de Caixa"):
+            novo_lanc = pd.DataFrame([{
+                "DATA": nova_data.strftime("%d/%m/%Y"),
                 "TIPO": "SAIDA",
-                "CLIENTE": gasto_selecionado,
-                "VALOR": valor_final,
+                "CLIENTE": item_fixo,
+                "VALOR": novo_valor,
                 "STATUS": "PENDENTE",
                 "NF": ""
             }])
-            
-            df_atualizado = pd.concat([df_fluxo, novo_item], ignore_index=True)
-            conn.update(worksheet="Fluxo de Caixa", data=df_atualizado)
-            st.success(f"{gasto_selecionado} adicionado ao Fluxo como pendente!")
+            df_final = pd.concat([df_fluxo.drop(columns=['DT_OBJ', 'MES_REF']), novo_lanc], ignore_index=True)
+            conn.update(worksheet="Fluxo de Caixa", data=df_final)
+            st.success(f"{item_fixo} lançado!")
             st.rerun()
 
 except Exception as e:
-    st.error(f"Erro: {e}")
+    st.error(f"Erro ao processar dados: {e}")
