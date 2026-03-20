@@ -56,15 +56,47 @@ try:
     df_periodo = df_fluxo if filtro_mes == "Tudo" else df_fluxo[df_fluxo['MES_REF'] == filtro_mes]
 
     # Métricas
-    c1, c2, c3 = st.columns(3)
+    # --- CÁLCULO DE PENDÊNCIAS E PREVISÃO ---
+    # Calculamos o que ainda não foi liquidado no período selecionado
+    ent_pendente = df_periodo[(df_periodo['TIPO'] == 'ENTRADA') & (df_periodo['STATUS'] == 'PENDENTE')]['VALOR'].sum()
+    sai_pendente = df_periodo[(df_periodo['TIPO'] == 'SAIDA') & (df_periodo['STATUS'] == 'PENDENTE')]['VALOR'].sum()
+    
+    # Saldo Previsto = Saldo que tenho hoje + o que vou receber - o que vou pagar
+    saldo_previsto = saldo_real_conta + ent_pendente - sai_pendente
+
+    # --- LINHA 1: SITUAÇÃO REAL (O que já aconteceu) ---
+    st.markdown(f"### 📊 Realizado - {filtro_mes}")
+    c1, c2, c3, c4 = st.columns(4)
+    
+    # Saldo acumulado total na conta
     c1.metric("Saldo Real (Hoje)", f"R$ {saldo_real_conta:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     
+    # Entradas e Saídas confirmadas do mês
     ent_p = df_periodo[(df_periodo['TIPO'] == 'ENTRADA') & (df_periodo['STATUS'] == 'RECEBIDO')]['VALOR'].sum()
+    c2.metric("Entradas Recebidas", f"R$ {ent_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    
     sai_p = df_periodo[(df_periodo['TIPO'] == 'SAIDA') & 
                        ((df_periodo['STATUS'] == 'PAGO') | (df_periodo['STATUS'] == 'RECEBIDO'))]['VALOR'].sum()
+    c3.metric("Saídas Pagas", f"- R$ {sai_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), delta_color="inverse")
+
+    # Resultado do mês (Lucro/Prejuízo momentâneo)
+    res_p = ent_p - sai_p
+    c4.metric("Resultado Mensal", f"R$ {res_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    # --- LINHA 2: PREVISÃO (O que está pendente) ---
+    st.markdown(f"### ⏳ Previsão - {filtro_mes}")
+    p1, p2, p3, p4 = st.columns(4)
+
+    # Projeção de como a conta vai ficar
+    cor_previsto = "normal" if saldo_previsto >= 0 else "inverse"
+    p1.metric("Saldo Previsto", f"R$ {saldo_previsto:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), help="Considera Saldo Real + Pendências")
     
-    c2.metric(f"Entradas ({filtro_mes})", f"R$ {ent_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    c3.metric(f"Saídas ({filtro_mes})", f"- R$ {sai_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), delta_color="inverse")
+    p2.metric("A Receber (Mês)", f"R$ {ent_pendente:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    p3.metric("A Pagar (Mês)", f"- R$ {sai_pendente:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), delta_color="inverse")
+    
+    # Diferença entre o que falta receber e o que falta pagar
+    res_previsto = ent_pendente - sai_pendente
+    p4.metric("Resultado Pendente", f"R$ {res_previsto:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
     st.divider()
 
