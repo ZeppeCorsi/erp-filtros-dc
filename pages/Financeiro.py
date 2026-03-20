@@ -41,39 +41,48 @@ try:
     df_gastos_fixos['VALOR'] = pd.to_numeric(df_gastos_fixos['VALOR'], errors='coerce').fillna(0)
 
     # --- 4. DASHBOARD ---
-# --- FILTRO DE EXTRATO (TIPO BANCÁRIO) ---
+# --- PROCESSAMENTO DE SALDO REAL (TODO O HISTÓRICO) ---
+    # Isso garante que o saldo não fique errado ao mudar o mês
+    total_entradas_hist = df_fluxo[(df_fluxo['TIPO'] == 'ENTRADA') & (df_fluxo['STATUS'] == 'RECEBIDO')]['VALOR'].sum()
+    total_saidas_hist = df_fluxo[(df_fluxo['TIPO'] == 'SAIDA') & (df_fluxo['STATUS'] == 'PAGO')]['VALOR'].sum()
+    saldo_real_hoje = total_entradas_hist - total_saidas_hist
+
+    # --- FILTRO DE EXTRATO ---
     st.title("🏦 Gestão Financeira - Filtros DC")
     
-    # Criamos as opções de Meses baseados nas datas que existem na planilha
-    df_fluxo['DT_OBJ'] = pd.to_datetime(df_fluxo['DATA'], dayfirst=True, errors='coerce')
-    df_fluxo = df_fluxo.dropna(subset=['DT_OBJ']).sort_values('DT_OBJ') # Ordena cronológico
-    
-    # Criar lista de meses disponíveis: "Março/2026"
-    df_fluxo['MES_REF'] = df_fluxo['DT_OBJ'].dt.strftime('%m/%Y')
-    meses_disponiveis = ["Tudo"] + sorted(df_fluxo['MES_REF'].unique().tolist(), key=lambda x: datetime.strptime(x, '%m/%Y'))
-    
     col_f1, col_f2 = st.columns([2, 4])
-    mes_filtro = col_f1.selectbox("Selecione o período do extrato:", meses_disponiveis, index=len(meses_disponiveis)-1)
+    # Pegamos os meses disponíveis para o filtro
+    meses_opcoes = ["Tudo"] + sorted(df_fluxo['MES_REF'].unique().tolist(), key=lambda x: datetime.strptime(x, '%m/%Y'))
+    mes_filtro = col_f1.selectbox("Filtrar extrato por mês:", meses_opcoes, index=len(meses_opcoes)-1)
 
-    # Filtragem dos dados
+    # Dados que serão mostrados na tabela (filtrados)
     if mes_filtro == "Tudo":
         df_exibir = df_fluxo.copy()
     else:
         df_exibir = df_fluxo[df_fluxo['MES_REF'] == mes_filtro].copy()
 
-    # --- MÉTRICAS (Baseadas no filtro selecionado) ---
-    recebido = df_exibir[(df_exibir['TIPO'] == 'ENTRADA') & (df_exibir['STATUS'] == 'RECEBIDO')]['VALOR'].sum()
-    pago = df_exibir[(df_exibir['TIPO'] == 'SAIDA') & (df_exibir['STATUS'] == 'PAGO')]['VALOR'].sum()
-    saldo_periodo = recebido - pago
+    # --- MÉTRICAS DO PERÍODO SELECIONADO ---
+    entradas_mes = df_exibir[(df_exibir['TIPO'] == 'ENTRADA') & (df_exibir['STATUS'] == 'RECEBIDO')]['VALOR'].sum()
+    saidas_mes = df_exibir[(df_exibir['TIPO'] == 'SAIDA') & (df_exibir['STATUS'] == 'PAGO')]['VALOR'].sum()
+    
+    # Pendências APENAS do mês selecionado
+    a_receber_mes = df_exibir[(df_exibir['TIPO'] == 'ENTRADA') & (df_exibir['STATUS'] == 'PENDENTE')]['VALOR'].sum()
+    a_pagar_mes = df_exibir[(df_exibir['TIPO'] == 'SAIDA') & (df_exibir['STATUS'] == 'PENDENTE')]['VALOR'].sum()
 
+    # Exibição das métricas
     c1, c2, c3 = st.columns(3)
-    c1.metric(f"Saldo Real ({mes_filtro})", f"R$ {saldo_periodo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     
-    a_receber = df_exibir[(df_exibir['TIPO'] == 'ENTRADA') & (df_exibir['STATUS'] == 'PENDENTE')]['VALOR'].sum()
-    c2.metric("A Receber no período", f"R$ {a_receber:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    # O Saldo Real é SEMPRE o saldo acumulado total da empresa (como no banco)
+    c1.metric("Saldo Real Atual (Conta)", f"R$ {saldo_real_hoje:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
     
-    a_pagar = df_exibir[(df_exibir['TIPO'] == 'SAIDA') & (df_exibir['STATUS'] == 'PENDENTE')]['VALOR'].sum()
-    c3.metric("A Pagar no período", f"R$ {a_pagar:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c2.metric(f"Entradas ({mes_filtro})", f"R$ {entradas_mes:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    c3.metric(f"Saídas ({mes_filtro})", f"R$ {saidas_mes:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    # Nova linha de métricas para pendências
+    st.write("---")
+    cp1, cp2 = st.columns(2)
+    cp1.metric(f"A Receber em {mes_filtro}", f"R$ {a_receber_mes:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    cp2.metric(f"A Pagar em {mes_filtro}", f"R$ {a_pagar_mes:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), delta_color="inverse")
 
     st.divider()
 
