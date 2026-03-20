@@ -12,24 +12,32 @@ if 'logado' not in st.session_state or not st.session_state.logado:
 
 conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
 
-# --- PROCESSAMENTO DE DADOS ---
+# --- PROCESSAMENTO DE DADOS (VERSÃO BLINDADA) ---
 try:
+    # Lendo as abas
     df_fluxo_raw = conn.read(worksheet="Fluxo de Caixa", ttl=0)
     df_gastos_raw = conn.read(worksheet="Gastos Fixos", ttl=0)
 
-    # Padronização de Colunas
+    # 1. Limpeza do Fluxo de Caixa
     df_fluxo = df_fluxo_raw.copy()
     df_fluxo.columns = [str(c).strip().upper() for c in df_fluxo.columns]
     
+    # Tratamento seguro para textos e números
+    df_fluxo['VALOR'] = pd.to_numeric(df_fluxo['VALOR'], errors='coerce').fillna(0)
+    df_fluxo['TIPO'] = df_fluxo['TIPO'].astype(str).str.upper().str.strip()
+    df_fluxo['STATUS'] = df_fluxo['STATUS'].astype(str).str.upper().str.strip()
+    
+    # 2. Limpeza dos Gastos Fixos (Onde estava o erro)
     df_gastos_fixos = df_gastos_raw.copy()
     df_gastos_fixos.columns = [str(c).strip().upper() for c in df_gastos_fixos.columns]
-
-    # Conversões e Tratamento de Erros
-    df_fluxo['VALOR'] = pd.to_numeric(df_fluxo['VALOR'], errors='coerce').fillna(0)
-    df_fluxo['TIPO'] = df_fluxo['TIPO'].astype(str).str.strip().upper()
-    df_fluxo['STATUS'] = df_fluxo['STATUS'].astype(str).str.strip().upper()
     
-    # Datas e Ordenação Cronológica
+    # Garante que as colunas essenciais existem e são texto/número
+    if 'VALOR' in df_gastos_fixos.columns:
+        df_gastos_fixos['VALOR'] = pd.to_numeric(df_gastos_fixos['VALOR'], errors='coerce').fillna(0)
+    if 'DETALHE' in df_gastos_fixos.columns:
+        df_gastos_fixos['DETALHE'] = df_gastos_fixos['DETALHE'].astype(str).str.strip()
+    
+    # 3. Datas e Ordenação
     df_fluxo['DT_OBJ'] = pd.to_datetime(df_fluxo['DATA'], dayfirst=True, errors='coerce')
     df_fluxo = df_fluxo.dropna(subset=['DT_OBJ']).sort_values('DT_OBJ')
     df_fluxo['MES_REF'] = df_fluxo['DT_OBJ'].dt.strftime('%m/%Y')
@@ -39,6 +47,8 @@ try:
     sai_total = df_fluxo[(df_fluxo['TIPO'] == 'SAIDA') & (df_fluxo['STATUS'] == 'PAGO')]['VALOR'].sum()
     saldo_atual_conta = ent_total - sai_total
 
+    # --- CONTINUAÇÃO DA INTERFACE (Métricas, Abas, etc.) ---
+    # (Mantenha o restante do código da última versão que te mandei)
     # --- INTERFACE ---
     st.title("🏦 Gestão Financeira - Filtros DC")
     
