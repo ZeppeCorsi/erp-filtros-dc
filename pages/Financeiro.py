@@ -113,6 +113,51 @@ try:
     df_viz['VALOR'] = df_viz.apply(formatar_tabela, axis=1)
     st.dataframe(df_viz, use_container_width=True, hide_index=True)
 
+# --- JANELA DE BAIXA DE PENDÊNCIAS ---
+    st.divider()
+    st.subheader(f"✅ Dar Baixa em Pendências - {filtro_mes}")
+    
+    # Filtra apenas os pendentes do período selecionado
+    df_pendentes_baixa = df_periodo[df_periodo['STATUS'] == 'PENDENTE'].copy()
+
+    if not df_pendentes_baixa.empty:
+        # Criamos uma lista amigável para o usuário selecionar o que quer baixar
+        # Exemplo: "10/03/2024 | CLIENTE X | R$ 500,00"
+        opcoes_pendentes = df_pendentes_baixa.apply(
+            lambda x: f"{x['DATA']} | {x['CLIENTE']} | {x['DESCRICAO']} | R$ {x['VALOR']:,.2f}", axis=1
+        ).tolist()
+        
+        selecionado = st.selectbox("Selecione o item que deseja confirmar:", opcoes_pendentes)
+        
+        # Input opcional para NF
+        nova_nf = st.text_input("Número da NF (opcional):", key="nf_baixa")
+
+        if st.button("Confirmar Recebimento / Pagamento"):
+            # Localiza o índice original na planilha usando a seleção
+            idx_selecionado = df_pendentes_baixa.index[opcoes_pendentes.index(selecionado)]
+            
+            # Pega o tipo (Entrada ou Saída) para definir o novo status corretamente
+            tipo_item = df_fluxo.at[idx_selecionado, 'TIPO']
+            novo_status = "RECEBIDO" if tipo_item == "ENTRADA" else "PAGO"
+            
+            # Atualiza no DataFrame original (df_fluxo_raw para manter a estrutura da planilha)
+            # Precisamos usar o índice original da leitura
+            idx_original = df_fluxo_raw.index[df_fluxo_raw.index == idx_selecionado]
+            
+            # Atualizamos as informações
+            df_fluxo_raw.at[idx_selecionado, 'STATUS'] = novo_status
+            if nova_nf:
+                df_fluxo_raw.at[idx_selecionado, 'NF'] = nova_nf
+            
+            # Envia a atualização para o Google Sheets
+            conn.update(worksheet="Fluxo de Caixa", data=df_fluxo_raw)
+            
+            st.success(f"Sucesso! O item foi alterado para {novo_status}.")
+            st.rerun() # Recarrega a página para atualizar os saldos
+    else:
+        st.info("Não há lançamentos pendentes para este período.")
+
+
 # --- ESPAÇO PARA LANÇAMENTOS E GESTÃO ---
     st.divider()
     
