@@ -113,49 +113,53 @@ try:
     df_viz['VALOR'] = df_viz.apply(formatar_tabela, axis=1)
     st.dataframe(df_viz, use_container_width=True, hide_index=True)
 
-# --- JANELA DE BAIXA DE PENDÊNCIAS ---
+# --- JANELA DE BAIXA E REAGENDAMENTO ---
     st.divider()
-    st.subheader(f"✅ Dar Baixa em Pendências - {filtro_mes}")
+    st.subheader(f"✅ Gestão de Pendências - {filtro_mes}")
     
-    # Filtra apenas os pendentes do período selecionado
-    df_pendentes_baixa = df_periodo[df_periodo['STATUS'] == 'PENDENTE'].copy()
+    # Filtra apenas o que é PENDENTE no período
+    df_baixa = df_periodo[df_periodo['STATUS'] == 'PENDENTE'].copy()
 
-    if not df_pendentes_baixa.empty:
-        # Criamos uma lista amigável para o usuário selecionar o que quer baixar
-        # Exemplo: "10/03/2024 | CLIENTE X | R$ 500,00"
-        opcoes_pendentes = df_pendentes_baixa.apply(
-            lambda x: f"{x['DATA']} | {x['CLIENTE']} | {x['DESCRICAO']} | R$ {x['VALOR']:,.2f}", axis=1
+    if not df_baixa.empty:
+        opcoes_p = df_baixa.apply(
+            lambda x: f"{x['DATA']} | {x['CLIENTE']} | R$ {x['VALOR']:,.2f}", axis=1
         ).tolist()
         
-        selecionado = st.selectbox("Selecione o item que deseja confirmar:", opcoes_pendentes)
+        selecionado = st.selectbox("Selecione o lançamento:", opcoes_p, key="sel_baixa")
         
-        # Input opcional para NF
-        nova_nf = st.text_input("Número da NF (opcional):", key="nf_baixa")
+        # Localiza o índice original
+        idx_selecionado = df_baixa.index[opcoes_p.index(selecionado)]
+        
+        col_btn1, col_btn2 = st.columns(2)
 
-        if st.button("Confirmar Recebimento / Pagamento"):
-            # Localiza o índice original na planilha usando a seleção
-            idx_selecionado = df_pendentes_baixa.index[opcoes_pendentes.index(selecionado)]
-            
-            # Pega o tipo (Entrada ou Saída) para definir o novo status corretamente
-            tipo_item = df_fluxo.at[idx_selecionado, 'TIPO']
-            novo_status = "RECEBIDO" if tipo_item == "ENTRADA" else "PAGO"
-            
-            # Atualiza no DataFrame original (df_fluxo_raw para manter a estrutura da planilha)
-            # Precisamos usar o índice original da leitura
-            idx_original = df_fluxo_raw.index[df_fluxo_raw.index == idx_selecionado]
-            
-            # Atualizamos as informações
-            df_fluxo_raw.at[idx_selecionado, 'STATUS'] = novo_status
-            if nova_nf:
-                df_fluxo_raw.at[idx_selecionado, 'NF'] = nova_nf
-            
-            # Envia a atualização para o Google Sheets
-            conn.update(worksheet="Fluxo de Caixa", data=df_fluxo_raw)
-            
-            st.success(f"Sucesso! O item foi alterado para {novo_status}.")
-            st.rerun() # Recarrega a página para atualizar os saldos
+        with col_btn1:
+            st.write("📝 **Dar Baixa (Concluir)**")
+            nova_nf = st.text_input("Vincular NF (opcional):", key="nf_input")
+            if st.button("Confirmar Pagamento / Recebimento", use_container_width=True):
+                tipo_item = df_fluxo.at[idx_selecionado, 'TIPO']
+                novo_status = "RECEBIDO" if tipo_item == "ENTRADA" else "PAGO"
+                
+                df_fluxo_raw.at[idx_selecionado, 'STATUS'] = novo_status
+                if nova_nf:
+                    df_fluxo_raw.at[idx_selecionado, 'NF'] = nova_nf
+                
+                conn.update(worksheet="Fluxo de Caixa", data=df_fluxo_raw)
+                st.success("Baixa realizada com sucesso!")
+                st.rerun()
+
+        with col_btn2:
+            st.write("📅 **Reagendar Lançamento**")
+            nova_data = st.date_input("Nova data acordada:", value=datetime.now(), key="data_reagendar")
+            if st.button("Alterar Data de Vencimento", use_container_width=True):
+                # Atualiza apenas a data, mantendo o status como PENDENTE
+                data_formatada = nova_data.strftime("%d/%m/%Y")
+                df_fluxo_raw.at[idx_selecionado, 'DATA'] = data_formatada
+                
+                conn.update(worksheet="Fluxo de Caixa", data=df_fluxo_raw)
+                st.warning(f"Reagendado para {data_formatada}!")
+                st.rerun()
     else:
-        st.info("Não há lançamentos pendentes para este período.")
+        st.info("Nenhuma pendência encontrada para este período.")
 
 
 # --- ESPAÇO PARA LANÇAMENTOS E GESTÃO ---
