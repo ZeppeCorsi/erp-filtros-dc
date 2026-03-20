@@ -81,5 +81,67 @@ try:
     df_viz['VALOR'] = df_viz.apply(formatar_tabela, axis=1)
     st.dataframe(df_viz, use_container_width=True, hide_index=True)
 
+# --- ESPAÇO PARA LANÇAMENTOS E GESTÃO ---
+    st.divider()
+    
+    col_lancar, col_cadastrar = st.columns(2)
+
+    with col_lancar:
+        st.subheader("🚀 Lançar Gasto Fixo")
+        st.caption("Selecione um gasto para enviar ao Fluxo de Caixa")
+        
+        # 1. Padroniza colunas da aba Gastos Fixos para evitar erros
+        df_g_limpo = df_gastos_raw.copy()
+        df_g_limpo.columns = [str(c).strip().upper() for c in df_g_limpo.columns]
+        
+        if not df_g_limpo.empty:
+            lista_gastos = df_g_limpo['DETALHE'].tolist()
+            item_fixo = st.selectbox("Qual gasto fixo?", lista_gastos)
+            
+            # Busca o valor do item selecionado
+            v_sugerido = df_g_limpo[df_g_limpo['DETALHE'] == item_fixo]['VALOR'].values[0]
+            
+            v_f = st.number_input("Valor (R$):", value=float(v_sugerido))
+            d_f = st.date_input("Vencimento:", datetime.now())
+            desc_f = st.text_input("Descrição detalhada:", value=f"Gasto Fixo - {item_fixo}")
+            
+            if st.button("Enviar para Fluxo"):
+                novo_item = pd.DataFrame([{
+                    "DATA": d_f.strftime("%d/%m/%Y"),
+                    "TIPO": "SAIDA",
+                    "CLIENTE": item_fixo,
+                    "DESCRICAO": desc_f,
+                    "VALOR": v_f,
+                    "STATUS": "PENDENTE",
+                    "NF": ""
+                }])
+                # Salva na aba 'Fluxo de Caixa'
+                df_final_fluxo = pd.concat([df_fluxo_raw, novo_item], ignore_index=True)
+                conn.update(worksheet="Fluxo de Caixa", data=df_final_fluxo)
+                st.success("Lançado no Fluxo!")
+                st.rerun()
+        else:
+            st.warning("Nenhum gasto fixo cadastrado.")
+
+    with col_cadastrar:
+        st.subheader("💾 Novo Modelo de Gasto")
+        st.caption("Cadastre um novo item na sua lista de Gastos Fixos")
+        
+        n_detalhe = st.text_input("Nome do Gasto (Ex: Aluguel):")
+        n_valor = st.number_input("Valor Padrão (R$):", min_value=0.0)
+        
+        if st.button("Salvar na Lista de Fixos"):
+            if n_detalhe:
+                # Criar o novo registro para a aba 'Gastos Fixos'
+                novo_modelo = pd.DataFrame([{"DETALHE": n_detalhe, "VALOR": n_valor}])
+                df_atualizar_g = pd.concat([df_gastos_raw, novo_modelo], ignore_index=True)
+                
+                # Salva na aba 'Gastos Fixos'
+                conn.update(worksheet="Gastos Fixos", data=df_atualizar_g)
+                st.success(f"Modelo {n_detalhe} salvo!")
+                st.rerun()
+            else:
+                st.error("Preencha o nome do gasto.")
+
 except Exception as e:
     st.error(f"Erro ao processar: {e}")
