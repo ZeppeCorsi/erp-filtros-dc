@@ -196,23 +196,43 @@ df_cli, df_prod = carregar()
 
 st.title("📄 Novo Orçamento")
 
+# --- LOGICA DE NUMERAÇÃO E STATUS ---
+df_hist_base = conn.read(worksheet="Orcamentos", ttl=0).dropna(how='all')
+df_hist_base.columns = [str(c).strip().upper() for c in df_hist_base.columns]
+
+# Calcula o próximo número disponível
+if not df_hist_base.empty and 'NUMERO' in df_hist_base.columns:
+    ultimo_num = pd.to_numeric(df_hist_base['NUMERO'], errors='coerce').max()
+    prox_num = int(ultimo_num + 1) if not pd.isna(ultimo_num) else 1
+else:
+    prox_num = 1
+
+# Session state para controlar o número atual que estamos usando
+if 'num_orc_atual' not in st.session_state:
+    st.session_state.num_orc_atual = prox_num
+
 # --- INÍCIO DO BLOCO DE BUSCA E EDIÇÃO ---
 with st.expander("🔍 BUSCAR ORÇAMENTO ANTIGO PARA EDITAR", expanded=False):
-    df_hist = conn.read(worksheet="Orcamentos", ttl=0).dropna(how='all')
-    
-    if not df_hist.empty:
-        df_hist['OPCAO'] = df_hist['DATA'].astype(str) + " - " + df_hist['CLIENTE'].astype(str)
-        lista_orc = sorted(df_hist['OPCAO'].unique().tolist(), reverse=True)
+    if not df_hist_base.empty:
+        # Filtramos para mostrar apenas o que faz sentido editar
+        df_editavel = df_hist_base[df_hist_base['STATUS'].isin(['ABERTO', 'PERDIDO', 'CANCELADO'])]
+        
+        df_editavel['OPCAO'] = "Nº " + df_editavel['NUMERO'].astype(str) + " | " + df_editavel['CLIENTE'].astype(str) + " (" + df_editavel['STATUS'] + ")"
+        lista_orc = sorted(df_editavel['OPCAO'].unique().tolist(), reverse=True)
         orc_escolhido = st.selectbox("Selecione um orçamento salvo:", [""] + lista_orc)
         
         if orc_escolhido != "":
             if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
-                data_sel, cliente_sel = orc_escolhido.split(" - ", 1)
+                # Extrai o número do orçamento da string selecionada
+                num_sel = orc_escolhido.split(" | ")[0].replace("Nº ", "")
+                st.session_state.num_orc_atual = int(num_sel) # Mantém o número para a nova versão
                 
-                # --- NOVIDADE: Salvamos quem estamos editando para substituir depois ---
-                st.session_state.editando_orc = {"DATA": data_sel, "CLIENTE": cliente_sel}
+                itens_salvos = df_hist_base[df_hist_base['NUMERO'].astype(str) == num_sel]
+                cliente_sel = itens_salvos.iloc[0]['CLIENTE']
                 
-                itens_salvos = df_hist[(df_hist['DATA'] == data_sel) & (df_hist['CLIENTE'] == cliente_sel)]
+                # Salvamos no session_state para a lógica de "EDITADO" no momento do save
+                st.session_state.editando_orc = {"NUMERO": num_sel, "CLIENTE": cliente_sel}
+                
                 st.session_state.cesta_orc = []
                 for _, linha in itens_salvos.iterrows():
                     st.session_state.cesta_orc.append({
@@ -222,14 +242,10 @@ with st.expander("🔍 BUSCAR ORÇAMENTO ANTIGO PARA EDITAR", expanded=False):
                         "UNIT": float(linha["VALOR UNITARIO"]),
                         "TOTAL": float(linha["VALOR TOTAL"])
                     })
-                
-                if 'NOME REDUZIDO' in df_cli.columns:
-                    lista_nomes = sorted(df_cli['NOME REDUZIDO'].astype(str).unique().tolist())
-                    if cliente_sel in lista_nomes:
-                        st.session_state.idx_o = lista_nomes.index(cliente_sel)
-                
-                st.success(f"Orçamento de {cliente_sel} carregado! Ao salvar, o antigo será substituído.")
+                st.success(f"Orçamento Nº {num_sel} carregado!")
                 st.rerun()
+
+st.info(f"📍 **ORÇAMENTO ATUAL: Nº {st.session_state.num_orc_atual}**")
 
 # --- 1. CLIENTE ---
 st.subheader("1. Identificação do Cliente")
@@ -362,6 +378,52 @@ if st.session_state.cesta_orc:
     
     obs_gerais = st.text_area("📝 Condições Gerais", "PAGAMENTO: 30 DIAS | ENTREGA: 05 DIAS ÚTEIS | FRETE: FOB").upper()
 
+    # --- BLOCO DE FOLLOW-UP (AÇÕES RÁPIDAS) ---
+    if 'editando_orc' in st.session_state:
+        st.divider()
+        st.subheader("🏁 Finalizar Negociação (Follow-up)")
+        st.caption(f"Alterar status do orçamento Nº {st.session_state.num_orc_atual}")
+        
+        c_p, c_c = st.columns(2)
+        
+        motivo = st.text_input("Motivo (Opcional):", placeholder="Ex: Cliente achou caro / Fechou com concorrente")
+
+        if c_p.button("❌ MARCAR COMO PERDIDO", use_container_width=True):
+            try:
+                df_follow = conn.read(worksheet="Orcamentos", ttl=0)
+                num_f = str(st.session_state.num_orc_atual)
+                
+                # Atualiza o status na planilha
+                df_follow.loc[df_follow['NUMERO'].astype(str) == num_f, 'STATUS'] = "PERDIDO"
+                # Opcional: Salva o motivo nos Detalhes ou Condições se desejar
+                
+                conn.update(worksheet="Orcamentos", data=df_follow)
+                st.error(f"Orçamento {num_f} marcado como PERDIDO.")
+                
+                # Limpa a tela
+                st.session_state.cesta_orc = []
+                if 'editando_orc' in st.session_state: del st.session_state.editando_orc
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro: {e}")
+
+        if c_c.button("🚫 MARCAR COMO CANCELADO", use_container_width=True):
+            try:
+                df_follow = conn.read(worksheet="Orcamentos", ttl=0)
+                num_f = str(st.session_state.num_orc_atual)
+                
+                df_follow.loc[df_follow['NUMERO'].astype(str) == num_f, 'STATUS'] = "CANCELADO"
+                
+                conn.update(worksheet="Orcamentos", data=df_follow)
+                st.warning(f"Orçamento {num_f} marcado como CANCELADO.")
+                
+                # Limpa a tela
+                st.session_state.cesta_orc = []
+                if 'editando_orc' in st.session_state: del st.session_state.editando_orc
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro: {e}")
+
     # --- INSERIR O BLOCO DO PDF AQUI (Entre a 153 e 154) ---
     # --- INSERIR O BLOCO DO PDF AQUI ---
     try:
@@ -397,14 +459,20 @@ if st.session_state.cesta_orc:
 
     if st.button("💾 SALVAR ORÇAMENTO NA PLANILHA", use_container_width=True, type="primary"):
         try:
-            # AJUSTE 3: Pegamos o nome do usuário logado do session_state
             vendedor = st.session_state.get('usuario', 'SISTEMA')
-            
             df_atual = conn.read(worksheet="Orcamentos", ttl=0).dropna(how='all')
             
+            # --- SE ESTIVER EDITANDO: Marcar o anterior como EDITADO ---
+            if 'editando_orc' in st.session_state:
+                num_edicao = st.session_state.editando_orc['NUMERO']
+                # Mudamos o status de todas as linhas que tinham aquele número antigo
+                df_atual.loc[df_atual['NUMERO'].astype(str) == str(num_edicao), 'STATUS'] = "EDITADO"
+
+            # --- CRIAR AS NOVAS LINHAS (Nova Versão ABERTA) ---
             novas_linhas = []
             for it in st.session_state.cesta_orc:
                 novas_linhas.append({
+                    "NUMERO": st.session_state.num_orc_atual, # O mesmo número se for edição, ou novo se for novo
                     "DATA": datetime.now().strftime("%d/%m/%Y"),
                     "VALIDADE": validade_orc.strftime("%d/%m/%Y"),
                     "CLIENTE": cliente_orc,
@@ -414,15 +482,21 @@ if st.session_state.cesta_orc:
                     "VALOR TOTAL": it["TOTAL"],
                     "VENDEDOR": vendedor,
                     "CONDICOES GERAIS": obs_gerais,
-                    "DETALHES": it["DETALHES"]
+                    "DETALHES": it["DETALHES"],
+                    "STATUS": "ABERTO" # Sempre entra aberto
                 })
             
             df_novos = pd.DataFrame(novas_linhas)
             df_final = pd.concat([df_atual, df_novos], ignore_index=True)
             conn.update(worksheet="Orcamentos", data=df_final)
             
-            st.success("✅ ORÇAMENTO SALVO!")
+            st.success(f"✅ ORÇAMENTO Nº {st.session_state.num_orc_atual} SALVO!")
+            
+            # Limpa tudo para o próximo
             st.session_state.cesta_orc = []
+            if 'editando_orc' in st.session_state: del st.session_state.editando_orc
+            st.session_state.num_orc_atual = prox_num + 1 # Reseta para o próximo número livre
+            
             st.balloons()
             st.rerun()
             
