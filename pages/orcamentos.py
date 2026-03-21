@@ -222,28 +222,46 @@ with st.expander("🔍 BUSCAR ORÇAMENTO ANTIGO PARA EDITAR", expanded=False):
         orc_escolhido = st.selectbox("Selecione um orçamento salvo:", [""] + lista_orc)
         
         if orc_escolhido != "":
-            if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
-                # Extrai o número do orçamento da string selecionada
+           if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
+                # 1. Tratamento do Número (Evita o ValueError de conversão direta)
                 num_sel = orc_escolhido.split(" | ")[0].replace("Nº ", "")
-                st.session_state.num_orc_atual = int(float(num_sel)) # Mantém o número para a nova versão
+                st.session_state.num_orc_atual = int(float(num_sel)) 
                 
-                itens_salvos = df_hist_base[df_hist_base['NUMERO'].astype(str) == num_sel]
-                cliente_sel = itens_salvos.iloc[0]['CLIENTE']
+                # 2. Localiza todos os itens desse orçamento
+                itens_salvos = df_hist_base[df_hist_base['NUMERO'].astype(str).str.contains(num_sel)]
                 
-                # Salvamos no session_state para a lógica de "EDITADO" no momento do save
-                st.session_state.editando_orc = {"NUMERO": num_sel, "CLIENTE": cliente_sel}
-                
-                st.session_state.cesta_orc = []
-                for _, linha in itens_salvos.iterrows():
-                    st.session_state.cesta_orc.append({
-                        "ITEM": linha["PRODUTO"],
-                        "DETALHES": str(linha["DETALHES"]).upper() if str(linha["DETALHES"]) != 'nan' else "",
-                        "QTD": int(linha["QT"]),
-                        "UNIT": float(linha["VALOR UNITARIO"]),
-                        "TOTAL": float(linha["VALOR TOTAL"])
-                    })
-                st.success(f"Orçamento Nº {num_sel} carregado!")
-                st.rerun()
+                if not itens_salvos.empty:
+                    # Pegamos a primeira linha para preencher o cabeçalho do cliente
+                    dados_cabecalho = itens_salvos.iloc[0]
+                    
+                    # --- CARREGAMENTO DOS DADOS DO CLIENTE ---
+                    st.session_state.cliente_selecionado = dados_cabecalho['CLIENTE']
+                    st.session_state.contato_orc = dados_cabecalho.get('CONTATO', "")
+                    st.session_state.email_orc = dados_cabecalho.get('EMAIL', "")
+                    st.session_state.tel_orc = dados_cabecalho.get('TELEFONE', "")
+                    
+                    # Para o selectbox do cliente encontrar o índice correto:
+                    if 'NOME REDUZIDO' in df_cli.columns:
+                        lista_nomes = sorted(df_cli['NOME REDUZIDO'].astype(str).unique().tolist())
+                        if dados_cabecalho['CLIENTE'] in lista_nomes:
+                            st.session_state.idx_o = lista_nomes.index(dados_cabecalho['CLIENTE'])
+
+                    # --- CARREGAMENTO DOS ITENS (CESTA) ---
+                    st.session_state.cesta_orc = []
+                    for _, linha in itens_salvos.iterrows():
+                        st.session_state.cesta_orc.append({
+                            "ITEM": linha["PRODUTO"],
+                            "DETALHES": str(linha["DETALHES"]).upper() if str(linha["DETALHES"]) != 'nan' else "",
+                            "QTD": int(linha["QT"]),
+                            "UNIT": float(linha["VALOR UNITARIO"]),
+                            "TOTAL": float(linha["VALOR TOTAL"])
+                        })
+                    
+                    # Marcamos que estamos em modo de edição
+                    st.session_state.editando_orc = {"NUMERO": num_sel, "CLIENTE": dados_cabecalho['CLIENTE']}
+                    
+                    st.success(f"Orçamento Nº {num_sel} e dados do cliente carregados com sucesso!")
+                    st.rerun()
 
 st.info(f"📍 **ORÇAMENTO ATUAL: Nº {st.session_state.num_orc_atual}**")
 
