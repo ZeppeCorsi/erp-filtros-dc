@@ -270,6 +270,7 @@ busca = c_b.text_input("Buscar cliente por nome", placeholder="Ex: HOTEL")
 col_c1, col_c2, col_c3 = st.columns(3)
 
 with col_c1: 
+    # Agora o campo 'lê' o que foi carregado no session_state
     contato_orc = st.text_input("Aos cuidados de (Nome):", 
                                 value=st.session_state.get('contato_orc', ""), 
                                 placeholder="Sr. João")
