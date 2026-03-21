@@ -225,7 +225,7 @@ with st.expander("🔍 BUSCAR ORÇAMENTO ANTIGO PARA EDITAR", expanded=False):
             if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
                 # Extrai o número do orçamento da string selecionada
                 num_sel = orc_escolhido.split(" | ")[0].replace("Nº ", "")
-                st.session_state.num_orc_atual = int(num_sel) # Mantém o número para a nova versão
+                st.session_state.num_orc_atual = int(float(num_sel)) # Mantém o número para a nova versão
                 
                 itens_salvos = df_hist_base[df_hist_base['NUMERO'].astype(str) == num_sel]
                 cliente_sel = itens_salvos.iloc[0]['CLIENTE']
