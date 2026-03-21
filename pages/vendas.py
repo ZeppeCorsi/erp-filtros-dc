@@ -33,38 +33,47 @@ df_produtos = carregar_bases()
 
 st.title("🛒 Efetivar Venda de Orçamento")
 
-# --- 1. BUSCA DE ORÇAMENTO (SUBSTITUINDO BUSCA DE CLIENTE) ---
+# --- 1. BUSCA DE ORÇAMENTO ---
 st.subheader("1. Selecione o Orçamento Aprovado")
 with st.container(border=True):
-    # Lemos a base de orçamentos
     df_orc = conn.read(worksheet="Orcamentos", ttl=0).dropna(how='all')
     
     if not df_orc.empty:
-        # Criamos a lista de opções: "DATA - CLIENTE"
-        df_orc['OPCAO'] = df_orc['DATA'].astype(str) + " - " + df_orc['CLIENTE'].astype(str)
-        lista_disponivel = sorted(df_orc['OPCAO'].unique().tolist(), reverse=True)
+        # --- NOVIDADE: Filtramos apenas os ABERTOS ---
+        df_orc_abertos = df_orc[df_orc['STATUS'] == "ABERTO"].copy()
         
-        orc_selecionado = st.selectbox("Escolha o orçamento para efetivar:", [""] + lista_disponivel)
-        
-        if orc_selecionado != "":
-            if st.button("📂 IMPORTAR ITENS DO ORÇAMENTO", use_container_width=True):
-                data_o, cli_o = orc_selecionado.split(" - ", 1)
-                
-                # Filtramos os itens desse orçamento
-                itens_importados = df_orc[(df_orc['DATA'] == data_o) & (df_orc['CLIENTE'] == cli_o)]
-                
-                # Preenchemos os dados do cliente e a cesta na session_state
-                st.session_state.cliente_venda = cli_o
-                st.session_state.cesta = []
-                for _, linha in itens_importados.iterrows():
-                    st.session_state.cesta.append({
-                        "ITEM": linha["PRODUTO"],
-                        "QTD": int(linha["QT"]),
-                        "UNIT": float(linha["VALOR UNITARIO"]),
-                        "TOTAL": float(linha["VALOR TOTAL"])
-                    })
-                st.success(f"Itens de {cli_o} importados com sucesso!")
-                st.rerun()
+        if not df_orc_abertos.empty:
+            # Criamos a lista com o Número para facilitar a localização exata
+            df_orc_abertos['OPCAO'] = "Nº " + df_orc_abertos['NUMERO'].astype(str) + " - " + df_orc_abertos['CLIENTE'].astype(str)
+            lista_disponivel = sorted(df_orc_abertos['OPCAO'].unique().tolist(), reverse=True)
+            
+            orc_selecionado = st.selectbox("Escolha o orçamento para efetivar:", [""] + lista_disponivel)
+            
+            if orc_selecionado != "":
+                if st.button("📂 IMPORTAR ITENS DO ORÇAMENTO", use_container_width=True):
+                    # Extraímos o número do orçamento da string
+                    num_o = orc_selecionado.split(" - ")[0].replace("Nº ", "")
+                    
+                    # Filtramos os itens pelo número (mais seguro que data/cliente)
+                    itens_importados = df_orc_abertos[df_orc_abertos['NUMERO'].astype(str) == num_o]
+                    cli_o = itens_importados.iloc[0]['CLIENTE']
+                    
+                    # Guardamos o número no session_state para dar baixa depois
+                    st.session_state.num_orc_venda = num_o
+                    st.session_state.cliente_venda = cli_o
+                    st.session_state.cesta = []
+                    
+                    for _, linha in itens_importados.iterrows():
+                        st.session_state.cesta.append({
+                            "ITEM": linha["PRODUTO"],
+                            "QTD": int(linha["QT"]),
+                            "UNIT": float(linha["VALOR UNITARIO"]),
+                            "TOTAL": float(linha["VALOR TOTAL"])
+                        })
+                    st.success(f"Orçamento Nº {num_o} de {cli_o} importado!")
+                    st.rerun()
+        else:
+            st.info("✅ Todos os orçamentos já foram fechados ou não há orçamentos ABERTOS.")
     else:
         st.warning("Nenhum orçamento encontrado na planilha.")
 
@@ -177,6 +186,20 @@ if st.session_state.cesta:
             st.balloons()
             st.session_state.cesta = []
             st.rerun()
+
+            # --- NOVIDADE: C. MUDAR STATUS DO ORÇAMENTO PARA FECHADO ---
+            if 'num_orc_venda' in st.session_state:
+                num_venda = str(st.session_state.num_orc_venda)
+                
+                # Lemos a base de orçamentos completa novamente para não perder dados
+                df_orc_upd = conn.read(worksheet="Orcamentos", ttl=0)
+                
+                # Localizamos o orçamento pelo número e mudamos o STATUS
+                df_orc_upd.loc[df_orc_upd['NUMERO'].astype(str) == num_venda, 'STATUS'] = "FECHADO"
+                
+                # Atualizamos a planilha de orçamentos
+                conn.update(worksheet="Orcamentos", data=df_orc_upd)
+                st.write(f"ℹ️ Orçamento Nº {num_venda} atualizado para FECHADO.")
             
         except Exception as e:
             st.error(f"Erro ao processar: {e}")
