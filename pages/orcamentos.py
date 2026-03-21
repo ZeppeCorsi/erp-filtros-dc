@@ -225,19 +225,19 @@ with st.expander("🔍 BUSCAR ORÇAMENTO ANTIGO PARA EDITAR", expanded=False):
            if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
     # Tratamento do Número (Evita o ValueError)
             num_sel = orc_escolhido.split(" | ")[0].replace("Nº ", "")
-        st.session_state.num_orc_atual = int(float(num_sel)) 
+            st.session_state.num_orc_atual = int(float(num_sel)) 
         
         # Localiza o orçamento
-        itens_salvos = df_hist_base[df_hist_base['NUMERO'].astype(str).str.contains(num_sel)]
+            itens_salvos = df_hist_base[df_hist_base['NUMERO'].astype(str).str.contains(num_sel)]
         
-        if not itens_salvos.empty:
-            dados_cabecalho = itens_salvos.iloc[0]
+            if not itens_salvos.empty:
+                dados_cabecalho = itens_salvos.iloc[0]
             
-            # Carrega dados do orçamento para o session_state
-            st.session_state.cliente_selecionado = dados_cabecalho['CLIENTE']
-            st.session_state.contato_orc = dados_cabecalho.get('CONTATO', "")
-            st.session_state.email_orc = dados_cabecalho.get('EMAIL', "")
-            st.session_state.tel_orc = dados_cabecalho.get('TELEFONE', "")
+                # Carrega dados do orçamento para o session_state
+                st.session_state.cliente_selecionado = dados_cabecalho['CLIENTE']
+                st.session_state.contato_orc = dados_cabecalho.get('CONTATO', "")
+                st.session_state.email_orc = dados_cabecalho.get('EMAIL', "")
+                st.session_state.tel_orc = dados_cabecalho.get('TELEFONE', "")
             
             # Sincroniza o índice do Selectbox do Cliente
             if 'NOME REDUZIDO' in df_cli.columns:
