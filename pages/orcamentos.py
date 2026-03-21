@@ -221,43 +221,44 @@ with st.expander("🔍 BUSCAR ORÇAMENTO ANTIGO PARA EDITAR", expanded=False):
         lista_orc = sorted(df_editavel['OPCAO'].unique().tolist(), reverse=True)
         orc_escolhido = st.selectbox("Selecione um orçamento salvo:", [""] + lista_orc)
         
-        if orc_escolhido != "":
-           if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
-    # Tratamento do Número (Evita o ValueError)
+if orc_escolhido != "":
+        if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
+            # 1. Tratamento do Número (Tudo dentro do 1º IF do botão)
             num_sel = orc_escolhido.split(" | ")[0].replace("Nº ", "")
             st.session_state.num_orc_atual = int(float(num_sel)) 
         
-        # Localiza o orçamento
+            # 2. Localiza o orçamento
             itens_salvos = df_hist_base[df_hist_base['NUMERO'].astype(str).str.contains(num_sel)]
         
             if not itens_salvos.empty:
                 dados_cabecalho = itens_salvos.iloc[0]
             
-                # Carrega dados do orçamento para o session_state
+                # 3. Carrega dados do orçamento para o session_state
                 st.session_state.cliente_selecionado = dados_cabecalho['CLIENTE']
-                st.session_state.contato_orc = dados_cabecalho.get('CONTATO', "")
-                st.session_state.email_orc = dados_cabecalho.get('EMAIL', "")
-                st.session_state.tel_orc = dados_cabecalho.get('TELEFONE', "")
+                st.session_state.contato_orc = str(dados_cabecalho.get('CONTATO', ""))
+                st.session_state.email_orc = str(dados_cabecalho.get('EMAIL', ""))
+                st.session_state.tel_orc = str(dados_cabecalho.get('TELEFONE', ""))
             
-            # Sincroniza o índice do Selectbox do Cliente
-            if 'NOME REDUZIDO' in df_cli.columns:
-                lista_nomes = sorted(df_cli['NOME REDUZIDO'].astype(str).unique().tolist())
-                if dados_cabecalho['CLIENTE'] in lista_nomes:
-                    st.session_state.idx_o = lista_nomes.index(dados_cabecalho['CLIENTE'])
+                # 4. Sincroniza o índice do Selectbox do Cliente
+                if 'NOME REDUZIDO' in df_cli.columns:
+                    lista_nomes = sorted(df_cli['NOME REDUZIDO'].astype(str).unique().tolist())
+                    if dados_cabecalho['CLIENTE'] in lista_nomes:
+                        st.session_state.idx_o = lista_nomes.index(dados_cabecalho['CLIENTE'])
 
-        # Carrega a cesta de itens
-        st.session_state.cesta_orc = []
-        for _, linha in itens_salvos.iterrows():
-            st.session_state.cesta_orc.append({
-                "ITEM": linha["PRODUTO"],
-                "DETALHES": str(linha["DETALHES"]).upper() if str(linha["DETALHES"]) != 'nan' else "",
-                "QTD": int(linha["QT"]),
-                "UNIT": float(linha["VALOR UNITARIO"]),
-                "TOTAL": float(linha["VALOR TOTAL"])
-            })
-        
-        st.success(f"Orçamento Nº {num_sel} carregado!")
-        st.rerun()
+                # 5. Carrega a cesta de itens (Também dentro do IF do botão)
+                st.session_state.cesta_orc = []
+                for _, linha in itens_salvos.iterrows():
+                    st.session_state.cesta_orc.append({
+                        "ITEM": linha["PRODUTO"],
+                        "DETALHES": str(linha["DETALHES"]).upper() if str(linha["DETALHES"]) != 'nan' else "",
+                        "QTD": int(linha["QT"]),
+                        "UNIT": float(linha["VALOR UNITARIO"]),
+                        "TOTAL": float(linha["VALOR TOTAL"])
+                    })
+                
+                # 6. Finalização e Recarregamento
+                st.success(f"Orçamento Nº {num_sel} carregado!")
+                st.rerun()
 
 st.info(f"📍 **ORÇAMENTO ATUAL: Nº {st.session_state.num_orc_atual}**")
 
