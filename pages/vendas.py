@@ -154,6 +154,19 @@ if st.session_state.cesta:
             df_vendas_db = conn.read(worksheet="Vendas", ttl=0)
             novas_vendas = []
             for it in st.session_state.cesta:
+
+                # --- BUSCA O CUSTO DO PRODUTO NO df_produtos ---
+                # Filtramos o dataframe de produtos pelo nome do item
+                dados_prod = df_produtos[df_produtos['PRODUTO'] == it["ITEM"]]
+                
+                custo_unitario = 0.0
+                if not dados_prod.empty:
+                    # Pega o valor da coluna CUSTO TOTAL (ou ajuste para o nome exato da sua coluna)
+                    custo_unitario = float(dados_prod.iloc[0].get('CUSTO TOTAL', 0))
+                
+                custo_total_venda = custo_unitario * it["QTD"]
+                margem_venda = it["TOTAL"] - custo_total_venda
+
                 novas_vendas.append({
                     "DATA": datetime.now().strftime("%d/%m/%Y"),
                     "CLIENTE": cliente_final,
@@ -161,7 +174,9 @@ if st.session_state.cesta:
                     "QTD": it["QTD"],
                     "VALOR UNIT": it["UNIT"],
                     "TOTAL": it["TOTAL"],
-                    "VENDEDOR": vendedor_atual
+                    "VENDEDOR": vendedor_atual,
+                    "CUSTO": custo_total_venda,
+                    "MARGEM": margem_venda
                 })
             df_venda_final = pd.concat([df_vendas_db, pd.DataFrame(novas_vendas)], ignore_index=True)
             conn.update(worksheet="Vendas", data=df_venda_final)
