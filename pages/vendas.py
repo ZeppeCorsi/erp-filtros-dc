@@ -142,8 +142,7 @@ if st.session_state.cesta:
         else:
             st.error(f"❌ Valor ultrapassou o total em: **R$ {abs(restante):,.2f}**")
 
-    # --- 5. BOTÃO FINALIZAR TUDO ---
-    # O botão só funciona se o valor bater
+ # --- 5. BOTÃO FINALIZAR TUDO ---
     pode_finalizar = (restante == 0)
     
     if st.button("🚀 FINALIZAR VENDA E GERAR FINANCEIRO", use_container_width=True, type="primary", disabled=not pode_finalizar):
@@ -151,17 +150,19 @@ if st.session_state.cesta:
             vendedor_atual = st.session_state.get('usuario', 'SISTEMA')
             
             # A. Salvar na aba Vendas
-            df_vendas_db = conn.read(worksheet="Vendas", ttl=0)
+            df_vendas_db = conn.read(worksheet="Vendas", ttl=0).dropna(how='all')
+            
+            # --- GARANTIA CONTRA KEYERROR: Limpa espaços e coloca em maiúsculo ---
+            df_vendas_db.columns = df_vendas_db.columns.str.strip().str.upper()
+            
             novas_vendas = []
             for it in st.session_state.cesta:
-
-                # --- BUSCA O CUSTO DO PRODUTO NO df_produtos ---
-                # Filtramos o dataframe de produtos pelo nome do item
+                # Busca o custo do produto
                 dados_prod = df_produtos[df_produtos['PRODUTO'] == it["ITEM"]]
                 
                 custo_unitario = 0.0
                 if not dados_prod.empty:
-                    # Pega o valor da coluna CUSTO TOTAL (ou ajuste para o nome exato da sua coluna)
+                    # Tenta pegar 'CUSTO TOTAL', se não achar, usa 0
                     custo_unitario = float(dados_prod.iloc[0].get('CUSTO TOTAL', 0))
                 
                 custo_total_venda = custo_unitario * it["QTD"]
@@ -178,11 +179,14 @@ if st.session_state.cesta:
                     "CUSTO": custo_total_venda,
                     "MARGEM": margem_venda
                 })
+            
             df_venda_final = pd.concat([df_vendas_db, pd.DataFrame(novas_vendas)], ignore_index=True)
             conn.update(worksheet="Vendas", data=df_venda_final)
 
             # B. Salvar no Fluxo de Caixa
             df_caixa = conn.read(worksheet="Fluxo de Caixa", ttl=0).dropna(how='all')
+            df_caixa.columns = df_caixa.columns.str.strip().str.upper()
+            
             novos_lancamentos = []
             for parc in dados_parcelas:
                 novos_lancamentos.append({
@@ -197,26 +201,29 @@ if st.session_state.cesta:
             df_caixa_final = pd.concat([df_caixa, pd.DataFrame(novos_lancamentos)], ignore_index=True)
             conn.update(worksheet="Fluxo de Caixa", data=df_caixa_final)
 
-            st.success("🎉 Venda e Financeiro registrados com sucesso!")
-            st.balloons()
-            st.session_state.cesta = []
-            st.rerun()
-
-            # --- NOVIDADE: C. MUDAR STATUS DO ORÇAMENTO PARA FECHADO ---
+            # C. Mudar Status do Orçamento para FECHADO
             if 'num_orc_venda' in st.session_state:
                 num_venda = str(st.session_state.num_orc_venda)
-                
-                # Lemos a base de orçamentos completa novamente para não perder dados
                 df_orc_upd = conn.read(worksheet="Orcamentos", ttl=0)
+                df_orc_upd.columns = df_orc_upd.columns.str.strip().str.upper()
                 
-                # Localizamos o orçamento pelo número e mudamos o STATUS
+                # Aplica o status FECHADO
                 df_orc_upd.loc[df_orc_upd['NUMERO'].astype(str) == num_venda, 'STATUS'] = "FECHADO"
-                
-                # Atualizamos a planilha de orçamentos
                 conn.update(worksheet="Orcamentos", data=df_orc_upd)
-                st.write(f"ℹ️ Orçamento Nº {num_venda} atualizado para FECHADO.")
-            
-        except Exception as e:
-            st.error(f"Erro ao processar: {e}")
 
-st.sidebar.image("LOGO Horizontal.jpg", use_container_width=True)
+            # D. Finalização de Interface
+            st.success(f"🎉 Venda realizada! Orçamento {st.session_state.get('num_orc_venda', '')} fechado com sucesso.")
+            st.balloons()
+            
+            # Limpa a memória para a próxima venda
+            st.session_state.cesta = []
+            if 'num_orc_venda' in st.session_state:
+                del st.session_state.num_orc_venda
+            if 'cliente_venda' in st.session_state:
+                st.session_state.cliente_venda = "Nenhum selecionado"
+            
+            # Rerun apenas no final de tudo
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Erro ao processar a venda: {e}")
