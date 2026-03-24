@@ -157,7 +157,7 @@ if st.session_state.cesta:
                 novas_vendas = []
                 for it in st.session_state.cesta:
                     # Busca o custo no df_produtos
-                    dados_prod = df_produtos[df_produtos['PRODUTO'] == it["ITEM"]]
+                    dados_prod = df_produtos[df_produtos['NOME'] == it["ITEM"]]
                     custo_u = float(dados_prod.iloc[0].get('CUSTO TOTAL', 0)) if not dados_prod.empty else 0.0
                     
                     novas_vendas.append({
