@@ -78,6 +78,12 @@ with st.container(border=True):
         st.warning("Nenhum orçamento encontrado na planilha.")
 
 st.divider()
+st.subheader("🚚 Gestão de Frete")
+col_f1, col_f2 = st.columns(2)
+
+# Entradas de valores
+frete_venda = col_f1.number_input("Valor do Frete cobrado do Cliente (R$)", min_value=0.0, value=0.0)
+frete_custo = col_f2.number_input("Custo do Frete (Pago à transportadora) (R$)", min_value=0.0, value=0.0)
 
 # --- 2. DADOS DA VENDA CARREGADA ---
 # Verificamos se há um cliente selecionado via orçamento
@@ -90,7 +96,7 @@ data_op = col_v2.date_input("Data da Venda", datetime.now(), format="DD/MM/YYYY"
 # --- 3. RESUMO E FECHAMENTO ---
 if st.session_state.cesta:
     st.write("### 📝 Itens do Pedido")
-    total_geral = sum(it['TOTAL'] for it in st.session_state.cesta)
+    total_geral = sum(it['TOTAL'] for it in st.session_state.cesta)+ frete_venda # O total agora inclui o frete cobrado do cliente
     
     for i, item in enumerate(st.session_state.cesta):
         with st.container(border=True):
@@ -172,6 +178,21 @@ if st.session_state.cesta:
                         "MARGEM": it["TOTAL"] - (custo_u * it["QTD"])
                     })
                 
+                # 2. AGORA A NOVIDADE: Incluímos a linha do FRETE como se fosse um produto
+                if frete_venda > 0 or frete_custo > 0:
+                    novas_vendas.append({
+                        "DATA": datetime.now().strftime("%d/%m/%Y"),
+                        "CLIENTE": cliente_final,
+                        "PRODUTO": "FRETE", # Nome fixo para facilitar filtros depois
+                        "QTD": 1,
+                        "VALOR UNIT": frete_venda,
+                        "TOTAL": frete_venda,
+                        "VENDEDOR": vendedor_atual,
+                        "CUSTO": frete_custo,
+                        "MARGEM": frete_venda - frete_custo
+                    })
+
+                # Salva tudo de uma vez (Produtos + Frete) na aba Vendas
                 df_venda_final = pd.concat([df_vendas_db, pd.DataFrame(novas_vendas)], ignore_index=True)
                 conn.update(worksheet="Vendas", data=df_venda_final)
 
