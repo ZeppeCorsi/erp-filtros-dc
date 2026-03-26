@@ -81,12 +81,22 @@ with tab_estudo:
         total_fat = df_filtrado['VALOR_NUM'].sum()
         total_pedidos = len(df_filtrado)
         
-        m1, m2, m3 = st.columns(3)
+        # BUSCANDO A MARGEM (Coluna N da sua planilha)
+        # Garantimos que os valores sejam numéricos para não dar erro no sum()
+        total_margem = pd.to_numeric(df_filtrado.get('MARGEM', 0), errors='coerce').sum()
+        
+        # Cálculo da Margem % (Lucro / Faturamento)
+        margem_perc = (total_margem / total_fat) * 100 if total_fat > 0 else 0
+
+
+        m1, m2, m3, m4, m5 = st.columns(5)
         valor_formatado = f"R$ {total_fat:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         m1.metric("Faturamento no Período", valor_formatado)
         m2.metric("Qtd. de Pedidos", total_pedidos)
         ticket = total_fat/total_pedidos if total_pedidos > 0 else 0
         m3.metric("Ticket Médio", f"R$ {ticket:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+        m4.metric("Margem Total", f"R$ {total_margem:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+        m5.metric("Margem %", f"{margem_perc:.2f}%")
 
         # --- GRÁFICOS (Só aparecem se for "TODOS" para fazer sentido comparar) ---
         if cliente_sel == "TODOS":
