@@ -164,6 +164,21 @@ if st.session_state.cesta:
                 for it in st.session_state.cesta:
                     # Busca o custo no df_produtos
                     dados_prod = df_produtos[df_produtos['NOME'] == it["ITEM"]]
+
+                    custo_unitario = 0.0
+                if not dados_prod.empty:
+                    # Pegamos o valor como string primeiro
+                    valor_str = str(dados_prod.iloc[0].get('CUSTO TOTAL', '0'))
+                    
+                    # Limpeza: Remove 'R$', espaços e troca vírgula por ponto
+                    valor_limpo = valor_str.replace('R$', '').replace(' ', '').replace(',', '.')
+                    
+                    try:
+                        custo_unitario = float(valor_limpo)
+                    except:
+                        custo_unitario = 0.0
+
+
                     custo_u = float(dados_prod.iloc[0].get('CUSTO TOTAL', 0)) if not dados_prod.empty else 0.0
                     
                     novas_vendas.append({
