@@ -162,25 +162,23 @@ if st.session_state.cesta:
                 
                 novas_vendas = []
                 for it in st.session_state.cesta:
-                    # Busca o custo no df_produtos
+                    # 1. Busca o produto pelo NOME no cadastro
                     dados_prod = df_produtos[df_produtos['NOME'] == it["ITEM"]]
 
-                    custo_unitario = 0.0
-                if not dados_prod.empty:
-                    # Pegamos o valor como string primeiro
-                    valor_str = str(dados_prod.iloc[0].get('CUSTO TOTAL', '0'))
+                    custo_u = 0.0
+                    if not dados_prod.empty:
+                        # Pegamos o valor bruto da planilha
+                        valor_str = str(dados_prod.iloc[0].get('CUSTO TOTAL', '0'))
+                        
+                        # LIMPEZA TOTAL: Tira R$, tira espaços e troca vírgula por ponto
+                        valor_limpo = valor_str.replace('R$', '').replace(' ', '').replace(',', '.')
+                        
+                        try:
+                            custo_u = float(valor_limpo)
+                        except:
+                            custo_u = 0.0
                     
-                    # Limpeza: Remove 'R$', espaços e troca vírgula por ponto
-                    valor_limpo = valor_str.replace('R$', '').replace(' ', '').replace(',', '.')
-                    
-                    try:
-                        custo_unitario = float(valor_limpo)
-                    except:
-                        custo_unitario = 0.0
-
-
-                    custo_u = float(dados_prod.iloc[0].get('CUSTO TOTAL', 0)) if not dados_prod.empty else 0.0
-                    
+                    # Agora calculamos com o custo_u já limpo
                     novas_vendas.append({
                         "DATA": datetime.now().strftime("%d/%m/%Y"),
                         "CLIENTE": cliente_final,
@@ -193,12 +191,12 @@ if st.session_state.cesta:
                         "MARGEM": it["TOTAL"] - (custo_u * it["QTD"])
                     })
                 
-                # 2. AGORA A NOVIDADE: Incluímos a linha do FRETE como se fosse um produto
+                # 2. ADICIONA O FRETE (Fora do laço dos produtos)
                 if frete_venda > 0 or frete_custo > 0:
                     novas_vendas.append({
                         "DATA": datetime.now().strftime("%d/%m/%Y"),
                         "CLIENTE": cliente_final,
-                        "PRODUTO": "FRETE", # Nome fixo para facilitar filtros depois
+                        "PRODUTO": "FRETE",
                         "QTD": 1,
                         "VALOR UNIT": frete_venda,
                         "TOTAL": frete_venda,
@@ -207,7 +205,7 @@ if st.session_state.cesta:
                         "MARGEM": frete_venda - frete_custo
                     })
 
-                # Salva tudo de uma vez (Produtos + Frete) na aba Vendas
+                # Salva na aba Vendas
                 df_venda_final = pd.concat([df_vendas_db, pd.DataFrame(novas_vendas)], ignore_index=True)
                 conn.update(worksheet="Vendas", data=df_venda_final)
 
