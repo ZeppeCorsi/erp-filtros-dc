@@ -3,3 +3,6 @@ pandas
 st-gsheets-connection
 plotly
 fpdf2
+folium
+streamlit-folium
+geopy
