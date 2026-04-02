@@ -64,6 +64,12 @@ def editar_cliente_dialog(indice, dados):
         try:
             df_full = conn.read(worksheet="Clientes", ttl=0)
             
+            # --- AJUSTE CRÍTICO AQUI ---
+            # Forçamos as colunas problemáticas a serem TEXTO antes de qualquer atribuição
+            df_full['NUMERO'] = df_full['NUMERO'].astype(str).replace('\.0$', '', regex=True).replace('nan', '')
+            df_full['EMAIL'] = df_full['EMAIL'].astype(str).replace('nan', '')
+            # ------------
+
             # Mapeando as atualizações
             df_full.at[indice, 'NOME REDUZIDO'] = novo_fantasia
             df_full.at[indice, 'EMAIL'] = str(novo_email) if novo_email else "" # Limpa o 'nan'
@@ -76,8 +82,7 @@ def editar_cliente_dialog(indice, dados):
             df_full.at[indice, 'CEP'] = novo_cep
             df_full.at[indice, 'HISTORICO'] = novo_historico
             
-            df_full['NUMERO'] = df_full['NUMERO'].astype(str).replace('\.0$', '', regex=True)
-
+            
             conn.update(worksheet="Clientes", data=df_full)
             st.success("Ficha atualizada com sucesso!")
             st.cache_data.clear()
