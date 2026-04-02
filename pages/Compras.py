@@ -38,7 +38,7 @@ with st.container(border=True):
     col_f1, col_f2 = st.columns([3, 1])
     if not df_fornecedores.empty:
         col_nome_forn = next((c for c in df_fornecedores.columns if 'NOME' in c or 'RAZAO' in c), df_fornecedores.columns[0])
-        lista_forn = sorted(df_fornecedores[col_nome_forn].astype(str).unique().tolist())
+        lista_forn = sorted([str(x) for x in df_fornecedores[col_nome_forn].dropna().unique()])
         fornecedor_sel = col_f1.selectbox("Selecione o Fornecedor", [""] + lista_forn)
     else:
         fornecedor_sel = col_f1.text_input("Nome do Fornecedor (Planilha vazia)")
