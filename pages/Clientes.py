@@ -66,16 +66,18 @@ def editar_cliente_dialog(indice, dados):
             
             # Mapeando as atualizações
             df_full.at[indice, 'NOME REDUZIDO'] = novo_fantasia
-            df_full.at[indice, 'EMAIL'] = novo_email
+            df_full.at[indice, 'EMAIL'] = str(novo_email) if novo_email else "" # Limpa o 'nan'
             df_full.at[indice, 'TELEFONE'] = novo_tel
             df_full.at[indice, 'RUA'] = novo_rua
-            df_full.at[indice, 'NUMERO'] = novo_num
+            df_full.at[indice, 'NUMERO'] = str(novo_num).replace('.0', '')
             df_full.at[indice, 'BAIRRO'] = novo_bairro
             df_full.at[indice, 'MUNICIPIO'] = novo_mun
             df_full.at[indice, 'UF'] = novo_uf
             df_full.at[indice, 'CEP'] = novo_cep
             df_full.at[indice, 'HISTORICO'] = novo_historico
             
+            df_full['NUMERO'] = df_full['NUMERO'].astype(str).replace('\.0$', '', regex=True)
+
             conn.update(worksheet="Clientes", data=df_full)
             st.success("Ficha atualizada com sucesso!")
             st.cache_data.clear()
