@@ -26,7 +26,7 @@ def carregar_dados():
         st.error(f"Erro ao carregar dados da Filtros DC: {e}")
         return pd.DataFrame()
 
- def aba_mapa_comercial():
+def aba_mapa_comercial():
     st.subheader("📍 Expansão Filtros DC: Localização Estratégica")
     st.markdown("---")
     
