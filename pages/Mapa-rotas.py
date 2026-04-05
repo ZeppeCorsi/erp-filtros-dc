@@ -9,7 +9,7 @@ from geopy.distance import geodesic
 ID_PLANILHA = "1e4OxEVcNSdvi0NehhTgt0zvWK9ncAgGQa1E6WAEgFE8"
 URL_LEITURA = f"https://docs.google.com/spreadsheets/d/{ID_PLANILHA}/export?format=csv&gid=0"
 
-# Coordenadas exatas da Rua Nicolau Zarvos, 161
+# Coordenadas exatas da Rua Nicolau Zarvos, 161 (corrigido conforme imagem)
 COORD_FILTROS_DC = (-23.6425, -46.6475) 
 
 def carregar_dados():
@@ -37,23 +37,25 @@ def aba_mapa_comercial():
     # Limpeza para o mapa (mantendo apenas quem tem lat/lon válidos)
     df_mapa = df.dropna(subset=['LATITUDE', 'LONGITUDE']).copy()
 
-    # --- FILTROS DE BUSCA ---
+    # --- FILTROS DE BUSCA (ESTRUTURA COMPLETA) ---
     st.markdown("### 🔍 Filtros de Visualização")
     c1, c2, c3 = st.columns([1, 1, 1])
     
     with c1:
-        # Filtro de Cidade (Município)
-        cidades = sorted(df_mapa['MUNICIPIO'].unique().tolist())
-        cidade_sel = st.multiselect("Filtrar por Cidade:", options=cidades)
+        # Filtro de Cidade (Município) - Adicionado com proteção contra erro de tipo
+        lista_municipios = sorted(df_mapa['MUNICIPIO'].dropna().astype(str).unique().tolist())
+        cidade_sel = st.multiselect("Filtrar por Cidade:", options=lista_municipios)
     
-    # Aplica o filtro de cidade se algo for selecionado
+    # Aplica o filtro de cidade se selecionado
     if cidade_sel:
-        df_mapa = df_mapa[df_mapa['MUNICIPIO'].isin(cidade_sel)]
+        df_mapa = df_mapa[df_mapa['MUNICIPIO'].astype(str).isin(cidade_sel)]
 
     with c2:
+        # Seleção de cliente para destino
+        lista_clientes = df_mapa['NOME REDUZIDO'].dropna().astype(str).tolist()
         cliente_destino = st.selectbox(
             "Selecionar Cliente para Visita:", 
-            options=["Nenhum"] + df_mapa['NOME REDUZIDO'].tolist()
+            options=["Nenhum"] + lista_clientes
         )
     
     with c3:
@@ -69,10 +71,9 @@ def aba_mapa_comercial():
             lambda x: geodesic(coord_dest, (x['LATITUDE'], x['LONGITUDE'])).km, axis=1
         )
 
-    # --- MAPA ---
-    # Centraliza o mapa: se houver filtro de cidade, foca nela, senão foca na sede
+    # --- MAPA (VISUAL ROBUSTO) ---
+    # Centraliza o mapa nos clientes filtrados ou na sede
     centro_mapa = [df_mapa['LATITUDE'].mean(), df_mapa['LONGITUDE'].mean()] if not df_mapa.empty else COORD_FILTROS_DC
-    
     m = folium.Map(location=centro_mapa, zoom_start=11, tiles="cartodbpositron")
 
     # 1. Marcador da FILTROS DC (Vermelho)
@@ -83,7 +84,7 @@ def aba_mapa_comercial():
         icon=folium.Icon(color='red', icon='home', prefix='fa')
     ).add_to(m)
 
-    # 2. Marcadores dos Clientes
+    # 2. Marcadores dos Clientes (Com Email e Telefone)
     for idx, row in df_mapa.iterrows():
         is_dest = (row['NOME REDUZIDO'] == cliente_destino)
         cor = 'green' if is_dest else 'blue'
@@ -106,14 +107,11 @@ def aba_mapa_comercial():
 
     st_folium(m, width=1100, height=600, returned_objects=[])
 
-    # --- TABELA DE APOIO ---
+    # --- TABELA DE APOIO (OS 5 MAIS PRÓXIMOS) ---
     if cliente_destino != "Nenhum":
-        st.write(f"### 🏁 Próximos de {cliente_destino}:")
+        st.write(f"### 🏁 Clientes num raio próximo a {cliente_destino}:")
         proximos = df_mapa[df_mapa['NOME REDUZIDO'] != cliente_destino].nsmallest(5, 'DIST_DEST_KM')
         st.dataframe(proximos[['NOME REDUZIDO', 'TELEFONE', 'EMAIL', 'MUNICIPIO', 'DIST_DEST_KM']])
-    elif cidade_sel:
-        st.write(f"### 📋 Clientes em {', '.join(cidade_sel)}:")
-        st.dataframe(df_mapa[['NOME REDUZIDO', 'TELEFONE', 'EMAIL', 'MUNICIPIO']])
 
 if __name__ == "__main__":
     aba_mapa_comercial()
