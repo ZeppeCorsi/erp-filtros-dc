@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime
+from datetime import date
 from dateutil.relativedelta import relativedelta
 from streamlit_gsheets import GSheetsConnection
 
+# 1. CONFIGURAÇÃO DA CONEXÃO
 conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
 
 def carregar_dados(aba):
@@ -37,57 +38,36 @@ def aba_gestao_locacao():
             st.info(f"Custo de Aquisição: R$ {custo_total:,.2f}")
 
         if st.form_submit_button("Confirmar e Gerar Lançamentos"):
-            # 1. SALVAR NA ABA 'LOCACAO' (Registro Mestre)
-            dados_loc = [[
-                data_ini.strftime("%d/%m/%Y"), 
-                cliente, 
-                produto, 
-                valor_mensal, 
-                custo_total
-            ]]
-            conn.append_row(dados_loc, worksheet="Locacao")
+            try:
+                # Acessando o gspread interno para usar append_row
+                # Nota: Em algumas versões do Streamlit, usa-se conn._instance.client
+                client = conn.session
+                spreadsheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+                sh = client.open_by_url(spreadsheet_url)
 
-            # 2. GERAR 12 PARCELAS PARA 'FLUXO DE CAIXA' E 'VENDAS'
-            for i in range(1, 13):
-                # Calcula a data de vencimento (todo dia 05 do mês subsequente)
-                vencimento = (data_ini + relativedelta(months=i-1)).replace(day=5)
-                data_str = vencimento.strftime("%d/%m/%Y")
+                # --- 1. GRAVAR NA ABA 'LOCACAO' ---
+                ws_loc = sh.worksheet("Locacao")
+                ws_loc.append_row([data_ini.strftime("%d/%m/%Y"), cliente, produto, valor_mensal, custo_total])
+
+                # --- 2. GERAR 12 PARCELAS ---
+                ws_caixa = sh.worksheet("Fluxo de Caixa")
+                ws_vendas = sh.worksheet("Vendas")
+
+                for i in range(1, 13):
+                    # Data de vencimento: Todo dia 05 do mês subsequente
+                    vencimento = (data_ini + relativedelta(months=i-1)).replace(day=5)
+                    data_str = vencimento.strftime("%d/%m/%Y")
+                    
+                    # Fluxo de Caixa: DATA; TIPO; DESCRICAO; VALOR; PARCELA; STATUS; CLIENTE; NF
+                    ws_caixa.append_row([data_str, "ENTRADA", f"LOCACAO - {produto}", valor_mensal, f"{i}/12", "PREVISTO", cliente, "LOC"])
+
+                    # Vendas: NF; DATA; CLIENTE; PRODUTO; CFOPS; TOTAL; COMPRAS; FORMA DE PAGAMENTO; QTD; VALOR UNIT; VENDEDOR; OBS; CUSTO; MARGEM
+                    ws_vendas.append_row(["LOC", data_str, cliente, produto, "LOC", valor_mensal, 0, "MENSALIDADE", 1, valor_mensal, "SISTEMA", f"Parc {i}/12", 0, valor_mensal])
                 
-                # --- Lançamento Fluxo de Caixa ---
-                # Colunas: DATA; TIPO; DESCRICAO; VALOR; PARCELA; STATUS; CLIENTE; NF
-                dados_caixa = [[
-                    data_str, 
-                    "ENTRADA", 
-                    f"LOCACAO MENSAL - {produto}", 
-                    valor_mensal, 
-                    f"{i}/12", 
-                    "PREVISTO", 
-                    cliente, 
-                    "LOC"
-                ]]
-                conn.append_row(dados_caixa, worksheet="Fluxo de Caixa")
-
-                # --- Lançamento Vendas ---
-                # Colunas: NF; DATA; CLIENTE; PRODUTO; CFOPS; TOTAL; COMPRAS; FORMA DE PAGAMENTO; QTD; VALOR UNIT; VENDEDOR; OBS; CUSTO; MARGEM
-                dados_vendas = [[
-                    "LOC", 
-                    data_str, 
-                    cliente, 
-                    produto, 
-                    "LOC", 
-                    valor_mensal, 
-                    0, 
-                    "MENSALIDADE", 
-                    1, 
-                    valor_mensal, 
-                    "SISTEMA", 
-                    f"Parcela {i}/12", 
-                    0, 
-                    valor_mensal
-                ]]
-                conn.append_row(dados_vendas, worksheet="Vendas")
-            
-            st.success(f"✅ Sucesso! 12 parcelas de R$ {valor_mensal} registradas para {cliente}.")
+                st.success(f"✅ Sucesso! 12 parcelas registradas para {cliente}.")
+                st.balloons()
+            except Exception as e:
+                st.error(f"Erro ao gravar na planilha: {e}")
 
 if __name__ == "__main__":
     aba_gestao_locacao()
