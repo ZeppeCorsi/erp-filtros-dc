@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from streamlit_gsheets import GSheetsConnection
+import gspread # Certifique-se de que está no requirements.txt
 
 # 1. CONFIGURAÇÃO DA CONEXÃO
 conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
@@ -18,7 +19,6 @@ def carregar_dados(aba):
 def aba_gestao_locacao():
     st.subheader("📑 Gestão de Locação - Filtros DC")
     
-    # Carrega dados atualizados
     df_clientes = carregar_dados("Clientes")
     df_produtos = carregar_dados("Produtos")
     
@@ -28,19 +28,15 @@ def aba_gestao_locacao():
         
         with col1:
             data_ini = st.date_input("Início da Locação", value=date.today())
-            
-            # Puxa NOME REDUZIDO dos clientes
             lista_cli = sorted(df_clientes["NOME REDUZIDO"].dropna().unique().tolist()) if not df_clientes.empty else ["Vazio"]
             cliente = st.selectbox("Cliente", options=lista_cli)
             
-            # AJUSTE: Agora busca na coluna 'NOME' da aba Produtos
+            # Ajustado para usar a coluna 'NOME' conforme sua imagem
             lista_prod = sorted(df_produtos["NOME"].dropna().unique().tolist()) if not df_produtos.empty else ["Vazio"]
             produto = st.selectbox("Equipamento (Filtro)", options=lista_prod)
             
         with col2:
             valor_mensal = st.number_input("Valor Mensal (R$)", min_value=0.0, format="%.2f")
-            
-            # Puxa o CUSTO TOTAL automaticamente
             custo_total = 0.0
             if not df_produtos.empty and produto != "Vazio":
                 filtro = df_produtos.loc[df_produtos["NOME"] == produto, "CUSTO TOTAL"]
@@ -50,15 +46,20 @@ def aba_gestao_locacao():
 
         if st.form_submit_button("Gerar Locação e Lançamentos"):
             try:
-                # Acesso ao cliente gspread para gravação múltipla
-                client = conn._instance.client
-                ss = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
+                # --- CORREÇÃO DO ACESSO AO GSPREAD ---
+                # Acessamos as credenciais através da conexão do Streamlit
+                credentials = conn._instance._credentials
+                client = gspread.authorize(credentials)
+                
+                # Abre a planilha pelo ID ou URL definida nos secrets
+                spreadsheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+                ss = client.open_by_url(spreadsheet_url)
 
-                # --- 1. REGISTRO NA ABA LOCACAO ---
+                # 1. ABA LOCACAO
                 ws_loc = ss.worksheet("Locacao")
                 ws_loc.append_row([data_ini.strftime("%d/%m/%Y"), cliente, produto, valor_mensal, custo_total])
 
-                # --- 2. GERAÇÃO DAS 12 PARCELAS (FLUXO E VENDAS) ---
+                # 2. GERAÇÃO DAS 12 PARCELAS
                 ws_caixa = ss.worksheet("Fluxo de Caixa")
                 ws_vendas = ss.worksheet("Vendas")
                 
@@ -66,25 +67,24 @@ def aba_gestao_locacao():
                 vendas_rows = []
 
                 for i in range(1, 13):
-                    # Todo dia 05 de cada mês subsequente
                     vencimento = (data_ini + relativedelta(months=i-1)).replace(day=5)
                     dt_str = vencimento.strftime("%d/%m/%Y")
                     
-                    # Colunas Fluxo: DATA; TIPO; DESCRICAO; VALOR; PARCELA; STATUS; CLIENTE; NF
+                    # Fluxo de Caixa: DATA; TIPO; DESCRICAO; VALOR; PARCELA; STATUS; CLIENTE; NF
                     caixa_rows.append([dt_str, "ENTRADA", f"LOCACAO - {produto}", valor_mensal, f"{i}/12", "PREVISTO", cliente, "LOC"])
 
-                    # Colunas Vendas (14 colunas): NF; DATA; CLIENTE; PRODUTO; CFOPS; TOTAL; COMPRAS; FORMA DE PAGAMENTO; QTD; VALOR UNIT; VENDEDOR; OBS; CUSTO; MARGEM
+                    # Vendas (14 colunas): NF; DATA; CLIENTE; PRODUTO; CFOPS; TOTAL; COMPRAS; FORMA DE PAGAMENTO; QTD; VALOR UNIT; VENDEDOR; OBS; CUSTO; MARGEM
                     vendas_rows.append(["LOC", dt_str, cliente, produto, "LOC", valor_mensal, 0, "BOLETO/LOC", 1, valor_mensal, "SISTEMA", f"Parc {i}/12", 0, valor_mensal])
                 
-                # Grava tudo de uma vez para ser mais rápido
                 ws_caixa.append_rows(caixa_rows)
                 ws_vendas.append_rows(vendas_rows)
 
-                st.success(f"✅ Filtro locado! 12 parcelas de R$ {valor_mensal} criadas no Fluxo e Vendas.")
+                st.success(f"✅ Locação ativada! Lançamentos realizados no Fluxo e Vendas.")
                 st.balloons()
 
             except Exception as e:
-                st.error(f"Erro ao salvar: {e}")
+                st.error(f"Erro técnico ao gravar: {e}")
+                st.info("Dica: Verifique se a biblioteca 'gspread' está instalada.")
 
 if __name__ == "__main__":
     aba_gestao_locacao()
