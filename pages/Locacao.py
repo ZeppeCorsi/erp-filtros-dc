@@ -45,12 +45,12 @@ def aba_gestao_locacao():
             # Puxa o nome do cliente da aba Clientes
             cliente = st.selectbox("Cliente", options=df_clientes["NOME REDUZIDO"].unique())
             # Puxa o produto da aba Produtos
-            produto = st.selectbox("Equipamento", options=df_produtos["PRODUTO"].unique())
+            produto = st.selectbox("Equipamento", options=df_produtos["NOME"].unique())
             
         with col2:
             valor_mensal = st.number_input("Valor da Mensalidade (R$)", min_value=0.0)
             # Puxa o custo automaticamente da coluna CUSTO TOTAL
-            custo_original = df_produtos.loc[df_produtos["PRODUTO"] == produto, "CUSTO TOTAL"].values[0]
+            custo_original = df_produtos.loc[df_produtos["NOME"] == produto, "CUSTO TOTAL"].values[0]
             st.info(f"Custo Original do Equipamento: R$ {custo_original:,.2f}")
 
         if st.form_submit_button("Salvar Locação"):
