@@ -2,11 +2,9 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 from dateutil.relativedelta import relativedelta
-# Importação correta para evitar o NameError
 from streamlit_gsheets import GSheetsConnection
 
 # 1. CONFIGURAÇÃO DA CONEXÃO
-# ttl=0 garante que ele busque dados novos da planilha sempre
 conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
 
 def carregar_dados(aba):
@@ -14,97 +12,79 @@ def carregar_dados(aba):
         df = conn.read(worksheet=aba)
         df.columns = [str(c).strip().upper() for c in df.columns]
         return df
-    except Exception as e:
-        st.error(f"Erro ao carregar aba {aba}: {e}")
+    except:
         return pd.DataFrame()
 
 def aba_gestao_locacao():
-    st.subheader("📑 Gestão de Locação e Automação ERP")
+    st.subheader("📑 Gestão de Locação - Filtros DC")
     
-    # Carrega dados para os seletores
+    # Carrega dados atualizados
     df_clientes = carregar_dados("Clientes")
     df_produtos = carregar_dados("Produtos")
     
     with st.form("nova_locacao", clear_on_submit=True):
-        st.markdown("### Cadastrar e Provisionar 12 Meses")
+        st.markdown("### Registrar Contrato e Provisionar 12 Meses")
         col1, col2 = st.columns(2)
         
         with col1:
             data_ini = st.date_input("Início da Locação", value=date.today())
+            
+            # Puxa NOME REDUZIDO dos clientes
             lista_cli = sorted(df_clientes["NOME REDUZIDO"].dropna().unique().tolist()) if not df_clientes.empty else ["Vazio"]
             cliente = st.selectbox("Cliente", options=lista_cli)
             
+            # AJUSTE: Agora busca na coluna 'NOME' da aba Produtos
             lista_prod = sorted(df_produtos["NOME"].dropna().unique().tolist()) if not df_produtos.empty else ["Vazio"]
-            produto = st.selectbox("Equipamento", options=lista_prod)
+            produto = st.selectbox("Equipamento (Filtro)", options=lista_prod)
             
         with col2:
             valor_mensal = st.number_input("Valor Mensal (R$)", min_value=0.0, format="%.2f")
             
+            # Puxa o CUSTO TOTAL automaticamente
             custo_total = 0.0
             if not df_produtos.empty and produto != "Vazio":
-                # Busca o custo na coluna CUSTO TOTAL
-                filtro_prod = df_produtos.loc[df_produtos["NOME"] == produto, "CUSTO TOTAL"]
-                if not filtro_prod.empty:
-                    custo_total = float(filtro_prod.values[0])
-            
+                filtro = df_produtos.loc[df_produtos["NOME"] == produto, "CUSTO TOTAL"]
+                if not filtro.empty:
+                    custo_total = float(filtro.values[0])
             st.info(f"Custo de Aquisição: R$ {custo_total:,.2f}")
 
-        # O botão que faltava e que agora processa a gravação
-        submit = st.form_submit_button("Confirmar e Gerar 12 Meses")
-
-        if submit:
+        if st.form_submit_button("Gerar Locação e Lançamentos"):
             try:
-                # Usando o método nativo do streamlit-gsheets para atualizar/adicionar linhas
-                # Se sua versão for recente, usamos o conn.create ou conn.update
-                
-                # 1. Dados para a aba LOCACAO
-                df_nova_loc = pd.DataFrame([{
-                    "DATA_INICIO": data_ini.strftime("%d/%m/%Y"),
-                    "CLIENTE": cliente,
-                    "EQUIPAMENTO": produto,
-                    "VALOR_MENSAL": valor_mensal,
-                    "CUSTO_ORIGINAL": custo_total
-                }])
+                # Acesso ao cliente gspread para gravação múltipla
+                client = conn._instance.client
+                ss = client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
 
-                # 2. Gerar lista para Fluxo e Vendas
-                lista_caixa = []
-                lista_vendas = []
+                # --- 1. REGISTRO NA ABA LOCACAO ---
+                ws_loc = ss.worksheet("Locacao")
+                ws_loc.append_row([data_ini.strftime("%d/%m/%Y"), cliente, produto, valor_mensal, custo_total])
+
+                # --- 2. GERAÇÃO DAS 12 PARCELAS (FLUXO E VENDAS) ---
+                ws_caixa = ss.worksheet("Fluxo de Caixa")
+                ws_vendas = ss.worksheet("Vendas")
+                
+                caixa_rows = []
+                vendas_rows = []
 
                 for i in range(1, 13):
+                    # Todo dia 05 de cada mês subsequente
                     vencimento = (data_ini + relativedelta(months=i-1)).replace(day=5)
                     dt_str = vencimento.strftime("%d/%m/%Y")
                     
-                    # Fluxo de Caixa
-                    lista_caixa.append({
-                        "DATA": dt_str, "TIPO": "ENTRADA", "DESCRICAO": f"LOCACAO - {produto}",
-                        "VALOR": valor_mensal, "PARCELA": f"{i}/12", "STATUS": "PREVISTO",
-                        "CLIENTE": cliente, "NF": "LOC"
-                    })
-                    
-                    # Vendas
-                    lista_vendas.append({
-                        "NF": "LOC", "DATA": dt_str, "CLIENTE": cliente, "PRODUTO": produto,
-                        "CFOPS": "LOC", "TOTAL": valor_mensal, "COMPRAS": 0,
-                        "FORMA DE PAGAMENTO": "MENSALIDADE", "QTD": 1, "VALOR UNIT": valor_mensal,
-                        "VENDEDOR": "SISTEMA", "OBS": f"Parc {i}/12", "CUSTO": 0, "MARGEM": valor_mensal
-                    })
+                    # Colunas Fluxo: DATA; TIPO; DESCRICAO; VALOR; PARCELA; STATUS; CLIENTE; NF
+                    caixa_rows.append([dt_str, "ENTRADA", f"LOCACAO - {produto}", valor_mensal, f"{i}/12", "PREVISTO", cliente, "LOC"])
 
-                # Gravando via Streamlit GSheets (método mais estável)
-                # Nota: append_row pode não existir, então concatenamos e sobrescrevemos ou usamos create
+                    # Colunas Vendas (14 colunas): NF; DATA; CLIENTE; PRODUTO; CFOPS; TOTAL; COMPRAS; FORMA DE PAGAMENTO; QTD; VALOR UNIT; VENDEDOR; OBS; CUSTO; MARGEM
+                    vendas_rows.append(["LOC", dt_str, cliente, produto, "LOC", valor_mensal, 0, "BOLETO/LOC", 1, valor_mensal, "SISTEMA", f"Parc {i}/12", 0, valor_mensal])
                 
-                # Para garantir a gravação, vamos usar o client direto se disponível
-                ws_client = conn._instance.client
-                ss = ws_client.open_by_url(st.secrets["connections"]["gsheets"]["spreadsheet"])
-                
-                ss.worksheet("Locacao").append_row(df_nova_loc.values.tolist()[0])
-                ss.worksheet("Fluxo de Caixa").append_rows([list(d.values()) for d in lista_caixa])
-                ss.worksheet("Vendas").append_rows([list(d.values()) for d in lista_vendas])
+                # Grava tudo de uma vez para ser mais rápido
+                ws_caixa.append_rows(caixa_rows)
+                ws_vendas.append_rows(vendas_rows)
 
-                st.success(f"✅ Locação e 12 parcelas de R$ {valor_mensal} geradas com sucesso!")
+                st.success(f"✅ Filtro locado! 12 parcelas de R$ {valor_mensal} criadas no Fluxo e Vendas.")
                 st.balloons()
-                
+
             except Exception as e:
-                st.error(f"Erro ao gravar dados: {e}. Verifique se as abas existem com os nomes exatos.")
+                st.error(f"Erro ao salvar: {e}")
 
 if __name__ == "__main__":
     aba_gestao_locacao()
