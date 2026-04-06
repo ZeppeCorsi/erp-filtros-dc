@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from streamlit_gsheets import GSheetsConnection
-import gspread # Certifique-se de que está no requirements.txt
 
 # 1. CONFIGURAÇÃO DA CONEXÃO
 conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
@@ -31,7 +30,6 @@ def aba_gestao_locacao():
             lista_cli = sorted(df_clientes["NOME REDUZIDO"].dropna().unique().tolist()) if not df_clientes.empty else ["Vazio"]
             cliente = st.selectbox("Cliente", options=lista_cli)
             
-            # Ajustado para usar a coluna 'NOME' conforme sua imagem
             lista_prod = sorted(df_produtos["NOME"].dropna().unique().tolist()) if not df_produtos.empty else ["Vazio"]
             produto = st.selectbox("Equipamento (Filtro)", options=lista_prod)
             
@@ -46,45 +44,58 @@ def aba_gestao_locacao():
 
         if st.form_submit_button("Gerar Locação e Lançamentos"):
             try:
-                # --- CORREÇÃO DO ACESSO AO GSPREAD ---
-                # Acessamos as credenciais através da conexão do Streamlit
-                credentials = conn._instance._credentials
-                client = gspread.authorize(credentials)
+                # --- NOVO MÉTODO DE GRAVAÇÃO (MAIS COMPATÍVEL) ---
                 
-                # Abre a planilha pelo ID ou URL definida nos secrets
-                spreadsheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
-                ss = client.open_by_url(spreadsheet_url)
+                # 1. Preparar dados para a aba Locacao
+                df_loc_atual = conn.read(worksheet="Locacao")
+                nova_linha_loc = pd.DataFrame([{
+                    "DATA_INICIO": data_ini.strftime("%d/%m/%Y"),
+                    "CLIENTE": cliente,
+                    "EQUIPAMENTO": produto,
+                    "VALOR_MENSAL": valor_mensal,
+                    "CUSTO_ORIGINAL": custo_total
+                }])
+                df_loc_final = pd.concat([df_loc_atual, nova_linha_loc], ignore_index=True)
+                conn.update(worksheet="Locacao", data=df_loc_final)
 
-                # 1. ABA LOCACAO
-                ws_loc = ss.worksheet("Locacao")
-                ws_loc.append_row([data_ini.strftime("%d/%m/%Y"), cliente, produto, valor_mensal, custo_total])
-
-                # 2. GERAÇÃO DAS 12 PARCELAS
-                ws_caixa = ss.worksheet("Fluxo de Caixa")
-                ws_vendas = ss.worksheet("Vendas")
+                # 2. Preparar as 12 parcelas para Fluxo e Vendas
+                df_fluxo_atual = conn.read(worksheet="Fluxo de Caixa")
+                df_vendas_atual = conn.read(worksheet="Vendas")
                 
-                caixa_rows = []
-                vendas_rows = []
+                novas_vendas = []
+                novos_fluxos = []
 
                 for i in range(1, 13):
                     vencimento = (data_ini + relativedelta(months=i-1)).replace(day=5)
                     dt_str = vencimento.strftime("%d/%m/%Y")
                     
-                    # Fluxo de Caixa: DATA; TIPO; DESCRICAO; VALOR; PARCELA; STATUS; CLIENTE; NF
-                    caixa_rows.append([dt_str, "ENTRADA", f"LOCACAO - {produto}", valor_mensal, f"{i}/12", "PREVISTO", cliente, "LOC"])
+                    # Dados Fluxo
+                    novos_fluxos.append({
+                        "DATA": dt_str, "TIPO": "ENTRADA", "DESCRICAO": f"LOCACAO - {produto}",
+                        "VALOR": valor_mensal, "PARCELA": f"{i}/12", "STATUS": "PREVISTO", 
+                        "CLIENTE": cliente, "NF": "LOC"
+                    })
 
-                    # Vendas (14 colunas): NF; DATA; CLIENTE; PRODUTO; CFOPS; TOTAL; COMPRAS; FORMA DE PAGAMENTO; QTD; VALOR UNIT; VENDEDOR; OBS; CUSTO; MARGEM
-                    vendas_rows.append(["LOC", dt_str, cliente, produto, "LOC", valor_mensal, 0, "BOLETO/LOC", 1, valor_mensal, "SISTEMA", f"Parc {i}/12", 0, valor_mensal])
+                    # Dados Vendas
+                    novas_vendas.append({
+                        "NF": "LOC", "DATA": dt_str, "CLIENTE": cliente, "PRODUTO": produto,
+                        "CFOPS": "LOC", "TOTAL": valor_mensal, "COMPRAS": 0,
+                        "FORMA DE PAGAMENTO": "BOLETO/LOC", "QTD": 1, "VALOR UNIT": valor_mensal,
+                        "VENDEDOR": "SISTEMA", "OBS": f"Parc {i}/12", "CUSTO": 0, "MARGEM": valor_mensal
+                    })
                 
-                ws_caixa.append_rows(caixa_rows)
-                ws_vendas.append_rows(vendas_rows)
+                # Concatenar e atualizar abas
+                df_fluxo_final = pd.concat([df_fluxo_atual, pd.DataFrame(novos_fluxos)], ignore_index=True)
+                df_vendas_final = pd.concat([df_vendas_atual, pd.DataFrame(novas_vendas)], ignore_index=True)
+                
+                conn.update(worksheet="Fluxo de Caixa", data=df_fluxo_final)
+                conn.update(worksheet="Vendas", data=df_vendas_final)
 
-                st.success(f"✅ Locação ativada! Lançamentos realizados no Fluxo e Vendas.")
+                st.success("✅ Tudo pronto! Locação e 12 parcelas gravadas com sucesso.")
                 st.balloons()
 
             except Exception as e:
-                st.error(f"Erro técnico ao gravar: {e}")
-                st.info("Dica: Verifique se a biblioteca 'gspread' está instalada.")
+                st.error(f"Erro ao salvar: {e}")
 
 if __name__ == "__main__":
     aba_gestao_locacao()
