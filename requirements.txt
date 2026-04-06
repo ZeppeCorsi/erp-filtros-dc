@@ -6,3 +6,4 @@ fpdf2
 folium
 streamlit-folium
 geopy
+gspread
