@@ -21,6 +21,7 @@ def aba_gestao_locacao():
     df_clientes = carregar_dados("Clientes")
     df_produtos = carregar_dados("Produtos")
     
+    # --- BLOCO 1: FORMULÁRIO DE CADASTRO ---
     with st.form("nova_locacao", clear_on_submit=True):
         st.markdown("### Registrar Contrato e Provisionar 12 Meses")
         col1, col2 = st.columns(2)
@@ -42,10 +43,11 @@ def aba_gestao_locacao():
                     custo_total = float(filtro.values[0])
             st.info(f"Custo de Aquisição: R$ {custo_total:,.2f}")
 
-        if st.form_submit_button("Gerar Locação e Lançamentos"):
+        # Botão de enviar
+        submit = st.form_submit_button("Gerar Locação e Lançamentos")
+
+        if submit:
             try:
-                # --- NOVO MÉTODO DE GRAVAÇÃO (MAIS COMPATÍVEL) ---
-                
                 # 1. Preparar dados para a aba Locacao
                 df_loc_atual = conn.read(worksheet="Locacao")
                 nova_linha_loc = pd.DataFrame([{
@@ -58,7 +60,7 @@ def aba_gestao_locacao():
                 df_loc_final = pd.concat([df_loc_atual, nova_linha_loc], ignore_index=True)
                 conn.update(worksheet="Locacao", data=df_loc_final)
 
-                # 2. Preparar as 12 parcelas para Fluxo e Vendas
+                # 2. Preparar as 12 parcelas
                 df_fluxo_atual = conn.read(worksheet="Fluxo de Caixa")
                 df_vendas_atual = conn.read(worksheet="Vendas")
                 
@@ -69,14 +71,12 @@ def aba_gestao_locacao():
                     vencimento = (data_ini + relativedelta(months=i-1)).replace(day=5)
                     dt_str = vencimento.strftime("%d/%m/%Y")
                     
-                    # Dados Fluxo
                     novos_fluxos.append({
                         "DATA": dt_str, "TIPO": "ENTRADA", "DESCRICAO": f"LOCACAO - {produto}",
                         "VALOR": valor_mensal, "PARCELA": f"{i}/12", "STATUS": "PREVISTO", 
                         "CLIENTE": cliente, "NF": "LOC"
                     })
 
-                    # Dados Vendas
                     novas_vendas.append({
                         "NF": "LOC", "DATA": dt_str, "CLIENTE": cliente, "PRODUTO": produto,
                         "CFOPS": "LOC", "TOTAL": valor_mensal, "COMPRAS": 0,
@@ -84,7 +84,6 @@ def aba_gestao_locacao():
                         "VENDEDOR": "SISTEMA", "OBS": f"Parc {i}/12", "CUSTO": 0, "MARGEM": valor_mensal
                     })
                 
-                # Concatenar e atualizar abas
                 df_fluxo_final = pd.concat([df_fluxo_atual, pd.DataFrame(novos_fluxos)], ignore_index=True)
                 df_vendas_final = pd.concat([df_vendas_atual, pd.DataFrame(novas_vendas)], ignore_index=True)
                 
@@ -93,56 +92,54 @@ def aba_gestao_locacao():
 
                 st.success("✅ Tudo pronto! Locação e 12 parcelas gravadas com sucesso.")
                 st.balloons()
+                st.rerun() # Força a atualização da tela para mostrar o dado novo na lista abaixo
 
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
 
-        # --- NOVO: LISTA DE CONTROLE DE VENCIMENTOS ---
-            st.markdown("---")
-            st.markdown("### 📅 Controle de Contratos (Vencimento da 12ª Parcela)")
-            
-            df_controle = carregar_dados("Locacao")
-            
-            if not df_controle.empty:
-                # 1. Converter a coluna de data para o formato correto
-                df_controle['DATA_INICIO'] = pd.to_datetime(df_controle['DATA_INICIO'], dayfirst=True)
-                
-                # 2. Calcular a data da 12ª parcela (11 meses após o início, para cair no 12º mês)
-                # Ex: Início Jan/2024 -> 12ª parcela em Dez/2024
-                df_controle['VENCIMENTO_12_PARC'] = df_controle['DATA_INICIO'].apply(
-                    lambda x: (x + relativedelta(months=11)).replace(day=5)
-                )
-                
-                # 3. Calcular dias restantes para o fim do ciclo de 12 meses
-                hoje = pd.Timestamp(date.today())
-                df_controle['DIAS_RESTANTES'] = (df_controle['VENCIMENTO_12_PARC'] - hoje).dt.days
-                
-                # 4. Formatação para exibição
-                df_display = df_controle.copy()
-                df_display['DATA_INICIO'] = df_display['DATA_INICIO'].dt.strftime('%d/%m/%Y')
-                df_display['VENCIMENTO_12_PARC'] = df_display['VENCIMENTO_12_PARC'].dt.strftime('%d/%m/%Y')
-                
-                # Renomear colunas para o usuário
-                df_display = df_display.rename(columns={
-                    'EQUIPAMENTO': 'PRODUTO',
-                    'VALOR_MENSAL': 'VALOR (R$)',
-                    'VENCIMENTO_12_PARC': 'DATA 12ª PARCELA',
-                    'DIAS_RESTANTES': 'DIAS PARA FIM DO CICLO'
-                })
+    # --- BLOCO 2: LISTA DE CONTROLE (FORA DO FORMULÁRIO) ---
+    # Note que agora o st.markdown está alinhado com o "with st.form" lá de cima
+    st.markdown("---")
+    st.markdown("### 📅 Controle de Contratos (Vencimento da 12ª Parcela)")
+    
+    df_controle = carregar_dados("Locacao")
+    
+    if not df_controle.empty:
+        # 1. Converter a coluna de data
+        df_controle['DATA_INICIO'] = pd.to_datetime(df_controle['DATA_INICIO'], dayfirst=True)
+        
+        # 2. Calcular 12ª parcela
+        df_controle['VENCIMENTO_12_PARC'] = df_controle['DATA_INICIO'].apply(
+            lambda x: (x + relativedelta(months=11)).replace(day=5)
+        )
+        
+        # 3. Dias restantes
+        hoje = pd.Timestamp(date.today())
+        df_controle['DIAS_RESTANTES'] = (df_controle['VENCIMENTO_12_PARC'] - hoje).dt.days
+        
+        # 4. Formatação
+        df_display = df_controle.copy()
+        df_display['DATA_INICIO'] = df_display['DATA_INICIO'].dt.strftime('%d/%m/%Y')
+        df_display['VENCIMENTO_12_PARC'] = df_display['VENCIMENTO_12_PARC'].dt.strftime('%d/%m/%Y')
+        
+        df_display = df_display.rename(columns={
+            'EQUIPAMENTO': 'PRODUTO',
+            'VALOR_MENSAL': 'VALOR (R$)',
+            'VENCIMENTO_12_PARC': 'DATA 12ª PARCELA',
+            'DIAS_RESTANTES': 'DIAS PARA FIM'
+        })
 
-                # Estilizar: destacar contratos que vencem em menos de 30 dias
-                def destacar_vencimento(val):
-                    color = 'red' if val <= 30 else 'black'
-                    return f'color: {color}'
+        def destacar_vencimento(val):
+            return 'color: red' if val <= 30 else 'color: black'
 
-                st.dataframe(
-                    df_display[['CLIENTE', 'PRODUTO', 'VALOR (R$)', 'DATA 12ª PARCELA', 'DIAS PARA FIM DO CICLO']]
-                    .style.applymap(destacar_vencimento, subset=['DIAS PARA FIM DO CICLO'])
-                )
-                
-                st.caption("💡 Linhas em vermelho indicam contratos que vencem em menos de 30 dias.")
-            else:
-                st.info("Nenhuma locação registrada para exibir o cronograma.")
+        # Exibir a tabela na tela sempre que a aba carregar
+        st.dataframe(
+            df_display[['CLIENTE', 'PRODUTO', 'VALOR (R$)', 'DATA 12ª PARCELA', 'DIAS PARA FIM']]
+            .style.applymap(destacar_vencimento, subset=['DIAS PARA FIM'])
+        )
+        st.caption("💡 Linhas em vermelho indicam contratos que vencem em menos de 30 dias.")
+    else:
+        st.info("Nenhuma locação registrada para exibir o cronograma.")
 
 if __name__ == "__main__":
     aba_gestao_locacao()
