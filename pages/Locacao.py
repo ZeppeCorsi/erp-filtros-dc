@@ -97,52 +97,52 @@ def aba_gestao_locacao():
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
 
-    # --- NOVO: LISTA DE CONTROLE DE VENCIMENTOS ---
-        st.markdown("---")
-        st.markdown("### 📅 Controle de Contratos (Vencimento da 12ª Parcela)")
-        
-        df_controle = carregar_dados("Locacao")
-        
-        if not df_controle.empty:
-            # 1. Converter a coluna de data para o formato correto
-            df_controle['DATA_INICIO'] = pd.to_datetime(df_controle['DATA_INICIO'], dayfirst=True)
+        # --- NOVO: LISTA DE CONTROLE DE VENCIMENTOS ---
+            st.markdown("---")
+            st.markdown("### 📅 Controle de Contratos (Vencimento da 12ª Parcela)")
             
-            # 2. Calcular a data da 12ª parcela (11 meses após o início, para cair no 12º mês)
-            # Ex: Início Jan/2024 -> 12ª parcela em Dez/2024
-            df_controle['VENCIMENTO_12_PARC'] = df_controle['DATA_INICIO'].apply(
-                lambda x: (x + relativedelta(months=11)).replace(day=5)
-            )
+            df_controle = carregar_dados("Locacao")
             
-            # 3. Calcular dias restantes para o fim do ciclo de 12 meses
-            hoje = pd.Timestamp(date.today())
-            df_controle['DIAS_RESTANTES'] = (df_controle['VENCIMENTO_12_PARC'] - hoje).dt.days
-            
-            # 4. Formatação para exibição
-            df_display = df_controle.copy()
-            df_display['DATA_INICIO'] = df_display['DATA_INICIO'].dt.strftime('%d/%m/%Y')
-            df_display['VENCIMENTO_12_PARC'] = df_display['VENCIMENTO_12_PARC'].dt.strftime('%d/%m/%Y')
-            
-            # Renomear colunas para o usuário
-            df_display = df_display.rename(columns={
-                'EQUIPAMENTO': 'PRODUTO',
-                'VALOR_MENSAL': 'VALOR (R$)',
-                'VENCIMENTO_12_PARC': 'DATA 12ª PARCELA',
-                'DIAS_RESTANTES': 'DIAS PARA FIM DO CICLO'
-            })
+            if not df_controle.empty:
+                # 1. Converter a coluna de data para o formato correto
+                df_controle['DATA_INICIO'] = pd.to_datetime(df_controle['DATA_INICIO'], dayfirst=True)
+                
+                # 2. Calcular a data da 12ª parcela (11 meses após o início, para cair no 12º mês)
+                # Ex: Início Jan/2024 -> 12ª parcela em Dez/2024
+                df_controle['VENCIMENTO_12_PARC'] = df_controle['DATA_INICIO'].apply(
+                    lambda x: (x + relativedelta(months=11)).replace(day=5)
+                )
+                
+                # 3. Calcular dias restantes para o fim do ciclo de 12 meses
+                hoje = pd.Timestamp(date.today())
+                df_controle['DIAS_RESTANTES'] = (df_controle['VENCIMENTO_12_PARC'] - hoje).dt.days
+                
+                # 4. Formatação para exibição
+                df_display = df_controle.copy()
+                df_display['DATA_INICIO'] = df_display['DATA_INICIO'].dt.strftime('%d/%m/%Y')
+                df_display['VENCIMENTO_12_PARC'] = df_display['VENCIMENTO_12_PARC'].dt.strftime('%d/%m/%Y')
+                
+                # Renomear colunas para o usuário
+                df_display = df_display.rename(columns={
+                    'EQUIPAMENTO': 'PRODUTO',
+                    'VALOR_MENSAL': 'VALOR (R$)',
+                    'VENCIMENTO_12_PARC': 'DATA 12ª PARCELA',
+                    'DIAS_RESTANTES': 'DIAS PARA FIM DO CICLO'
+                })
 
-            # Estilizar: destacar contratos que vencem em menos de 30 dias
-            def destacar_vencimento(val):
-                color = 'red' if val <= 30 else 'black'
-                return f'color: {color}'
+                # Estilizar: destacar contratos que vencem em menos de 30 dias
+                def destacar_vencimento(val):
+                    color = 'red' if val <= 30 else 'black'
+                    return f'color: {color}'
 
-            st.dataframe(
-                df_display[['CLIENTE', 'PRODUTO', 'VALOR (R$)', 'DATA 12ª PARCELA', 'DIAS PARA FIM DO CICLO']]
-                .style.applymap(destacar_vencimento, subset=['DIAS PARA FIM DO CICLO'])
-            )
-            
-            st.caption("💡 Linhas em vermelho indicam contratos que vencem em menos de 30 dias.")
-        else:
-            st.info("Nenhuma locação registrada para exibir o cronograma.")
+                st.dataframe(
+                    df_display[['CLIENTE', 'PRODUTO', 'VALOR (R$)', 'DATA 12ª PARCELA', 'DIAS PARA FIM DO CICLO']]
+                    .style.applymap(destacar_vencimento, subset=['DIAS PARA FIM DO CICLO'])
+                )
+                
+                st.caption("💡 Linhas em vermelho indicam contratos que vencem em menos de 30 dias.")
+            else:
+                st.info("Nenhuma locação registrada para exibir o cronograma.")
 
 if __name__ == "__main__":
     aba_gestao_locacao()
