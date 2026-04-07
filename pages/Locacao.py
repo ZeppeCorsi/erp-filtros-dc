@@ -10,7 +10,7 @@ conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
 def carregar_dados(aba):
     try:
         df = conn.read(worksheet=aba)
-        # Remove colunas e linhas totalmente vazias que o Sheets às vezes cria
+        # Remove colunas e linhas totalmente vazias
         df = df.dropna(how='all').dropna(axis=1, how='all')
         df.columns = [str(c).strip().upper() for c in df.columns]
         return df
@@ -20,7 +20,6 @@ def carregar_dados(aba):
 def aba_gestao_locacao():
     st.subheader("📑 Gestão de Locação - Filtros DC")
     
-    # Carrega dados para os seletores
     df_clientes = carregar_dados("Clientes")
     df_produtos = carregar_dados("Produtos")
     
@@ -49,10 +48,10 @@ def aba_gestao_locacao():
 
         if submit:
             try:
-                # --- SOLUÇÃO PARA NÃO GRAVAR POR CIMA: LER ANTES ---
+                # --- SOLUÇÃO PARA NÃO SOBRESCREVER ---
                 
-                # 1. Aba Locacao
-                df_loc_antigo = conn.read(worksheet="Locacao")
+                # 1. ABA LOCACAO (Garante que as colunas batam)
+                df_loc_antigo = conn.read(worksheet="Locacao").dropna(how='all')
                 nova_loc = pd.DataFrame([{
                     "DATA_INICIO": data_ini.strftime("%d/%m/%Y"),
                     "CLIENTE": cliente,
@@ -60,13 +59,12 @@ def aba_gestao_locacao():
                     "VALOR_MENSAL": valor_mensal,
                     "CUSTO_ORIGINAL": custo_total
                 }])
-                # Concatena o antigo com o novo para não perder nada
                 df_loc_final = pd.concat([df_loc_antigo, nova_loc], ignore_index=True)
                 conn.update(worksheet="Locacao", data=df_loc_final)
 
-                # 2. Fluxo e Vendas
-                df_fluxo_antigo = conn.read(worksheet="Fluxo de Caixa")
-                df_vendas_antigo = conn.read(worksheet="Vendas")
+                # 2. ABA FLUXO DE CAIXA E VENDAS
+                df_fluxo_antigo = conn.read(worksheet="Fluxo de Caixa").dropna(how='all')
+                df_vendas_antigo = conn.read(worksheet="Vendas").dropna(how='all')
                 
                 novas_vendas = []
                 novos_fluxos = []
@@ -81,6 +79,7 @@ def aba_gestao_locacao():
                         "CLIENTE": cliente, "NF": "LOC"
                     })
 
+                    # Criamos exatamente as 14 colunas da imagem
                     novas_vendas.append({
                         "NF": "LOC", "DATA": dt_str, "CLIENTE": cliente, "PRODUTO": produto,
                         "CFOPS": "LOC", "TOTAL": valor_mensal, "COMPRAS": 0,
@@ -88,50 +87,51 @@ def aba_gestao_locacao():
                         "VENDEDOR": "SISTEMA", "OBS": f"Parc {i}/12", "CUSTO": 0, "MARGEM": valor_mensal
                     })
                 
-                # Concatena e atualiza
+                # Garante que não haja colunas extras (index=False)
                 df_fluxo_final = pd.concat([df_fluxo_antigo, pd.DataFrame(novos_fluxos)], ignore_index=True)
                 df_vendas_final = pd.concat([df_vendas_antigo, pd.DataFrame(novas_vendas)], ignore_index=True)
                 
+                # REPARO CRÍTICO: Força o número de colunas a ser igual ao original
+                df_vendas_final = df_vendas_final.iloc[:, :14]
+                df_fluxo_final = df_fluxo_final.iloc[:, :8]
+
                 conn.update(worksheet="Fluxo de Caixa", data=df_fluxo_final)
                 conn.update(worksheet="Vendas", data=df_vendas_final)
 
-                st.success("✅ Gravado com sucesso (incluído ao final das listas)!")
+                st.success("✅ Tudo gravado corretamente no final das listas!")
                 st.balloons()
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
 
-    # --- AGORA A PARTE DE BAIXO (DENTRO DA FUNÇÃO) ---
+    # --- TABELA DE CONTROLE (IDENTADA PARA APARECER SEMPRE) ---
     st.markdown("---")
     st.markdown("### 📅 Controle de Contratos (Vencimento da 12ª Parcela)")
     
-    # Recarrega para mostrar o que acabou de ser gravado
     df_controle = carregar_dados("Locacao")
     
     if not df_controle.empty:
         try:
-            # Garante nomes de colunas padrão
-            df_controle['DATA_INICIO'] = pd.to_datetime(df_controle['DATA_INICIO'], dayfirst=True, errors='coerce')
-            df_controle = df_controle.dropna(subset=['DATA_INICIO'])
+            # Converte data ignorando erros
+            df_controle['DATA_INICIO_DT'] = pd.to_datetime(df_controle['DATA_INICIO'], dayfirst=True, errors='coerce')
+            df_controle = df_controle.dropna(subset=['DATA_INICIO_DT'])
             
             # Cálculo da 12ª parcela
-            df_controle['VENC_12'] = df_controle['DATA_INICIO'].apply(lambda x: (x + relativedelta(months=11)).replace(day=5))
+            df_controle['VENC_12'] = df_controle['DATA_INICIO_DT'].apply(lambda x: (x + relativedelta(months=11)).replace(day=5))
             df_controle['DIAS'] = (df_controle['VENC_12'] - pd.Timestamp(date.today())).dt.days
             
-            # Formata para exibição
+            # Formatação
             df_view = df_controle.copy()
-            df_view['DATA_INICIO'] = df_view['DATA_INICIO'].dt.strftime('%d/%m/%Y')
-            df_view['VENC_12'] = df_view['VENC_12'].dt.strftime('%d/%m/%Y')
-            
-            df_view = df_view.rename(columns={'EQUIPAMENTO': 'PRODUTO', 'VALOR_MENSAL': 'VALOR', 'VENC_12': '12ª PARCELA', 'DIAS': 'DIAS REST.'})
+            df_view['12ª PARCELA'] = df_view['VENC_12'].dt.strftime('%d/%m/%Y')
+            df_view = df_view.rename(columns={'EQUIPAMENTO': 'PRODUTO', 'VALOR_MENSAL': 'VALOR'})
 
             st.dataframe(
-                df_view[['CLIENTE', 'PRODUTO', 'VALOR', '12ª PARCELA', 'DIAS REST.']]
-                .style.applymap(lambda x: 'color: red' if isinstance(x, int) and x <= 30 else 'color: black', subset=['DIAS REST.'])
+                df_view[['CLIENTE', 'PRODUTO', 'VALOR', '12ª PARCELA', 'DIAS']]
+                .style.applymap(lambda x: 'color: red' if isinstance(x, int) and x <= 30 else 'color: black', subset=['DIAS'])
             )
         except Exception as e:
-            st.error(f"Erro ao processar tabela: {e}")
+            st.write("Aguardando novos dados formatados...")
     else:
-        st.info("Nenhuma locação encontrada na aba 'Locacao'.")
+        st.info("Nenhuma locação ativa na aba 'Locacao'.")
 
 if __name__ == "__main__":
     aba_gestao_locacao()
