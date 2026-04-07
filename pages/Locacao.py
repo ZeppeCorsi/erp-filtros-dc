@@ -135,7 +135,7 @@ def aba_gestao_locacao():
         # Exibir a tabela na tela sempre que a aba carregar
         st.dataframe(
             df_display[['CLIENTE', 'PRODUTO', 'VALOR (R$)', 'DATA 12ª PARCELA', 'DIAS PARA FIM']]
-            .style.applymap(destacar_vencimento, subset=['DIAS PARA FIM'])
+            .style.map(destacar_vencimento, subset=['DIAS PARA FIM'])
         )
         st.caption("💡 Linhas em vermelho indicam contratos que vencem em menos de 30 dias.")
     else:
