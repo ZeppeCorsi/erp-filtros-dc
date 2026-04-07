@@ -4,107 +4,120 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from streamlit_gsheets import GSheetsConnection
 
-# 1. CONFIGURAÇÃO DA CONEXÃO
+# 1. CONEXÃO
 conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
 
-def carregar_dados(aba):
+def carregar_dados_limpos(aba):
     try:
-        df = conn.read(worksheet=aba)
-        # Remove colunas e linhas totalmente vazias
-        df = df.dropna(how='all').dropna(axis=1, how='all')
+        # Força o refresh (ttl=0)
+        df = conn.read(worksheet=aba, ttl=0)
+        if df is None or df.empty:
+            return pd.DataFrame()
+        # Limpeza agressiva de espaços e linhas vazias
+        df = df.dropna(how='all').reset_index(drop=True)
         df.columns = [str(c).strip().upper() for c in df.columns]
         return df
     except:
         return pd.DataFrame()
 
 def aba_gestao_locacao():
-    st.subheader("📑 Gestão de Locação - Filtros DC")
+    st.title("🚀 Painel de Locações - Filtros DC")
     
-    df_clientes = carregar_dados("Clientes")
-    df_produtos = carregar_dados("Produtos")
+    # Carregamento de Tabelas de Apoio
+    df_cli = carregar_dados_limpos("Clientes")
+    df_prod = carregar_dados_limpos("Produtos")
     
-    with st.form("nova_locacao", clear_on_submit=True):
-        st.markdown("### Registrar Contrato e Provisionar 12 Meses")
-        # ... (seu código de inputs aqui: data_ini, cliente, produto, valor_mensal)
-        col1, col2 = st.columns(2)
-        with col1:
-            data_ini = st.date_input("Início da Locação", value=date.today())
-            lista_cli = sorted(df_clientes["NOME REDUZIDO"].dropna().unique().tolist()) if not df_clientes.empty else ["Vazio"]
-            cliente = st.selectbox("Cliente", options=lista_cli)
-            lista_prod = sorted(df_produtos["NOME"].dropna().unique().tolist()) if not df_produtos.empty else ["Vazio"]
-            produto = st.selectbox("Equipamento (Filtro)", options=lista_prod)
-        with col2:
-            valor_mensal = st.number_input("Valor Mensal (R$)", min_value=0.0, format="%.2f")
-            custo_total = 0.0
-            if not df_produtos.empty and produto != "Vazio":
-                filtro = df_produtos.loc[df_produtos["NOME"] == produto, "CUSTO TOTAL"]
-                if not filtro.empty: custo_total = float(filtro.values[0])
-            st.info(f"Custo de Aquisição: R$ {custo_total:,.2f}")
-
-        submit = st.form_submit_button("Gerar Locação e Lançamentos")
-
-        if submit:
-            try:
-                # --- LÓGICA DE GRAVAÇÃO (Já funcionando conforme seu feedback) ---
-                df_loc_antigo = conn.read(worksheet="Locacao").dropna(how='all')
-                nova_loc = pd.DataFrame([{"DATA_INICIO": data_ini.strftime("%d/%m/%Y"), "CLIENTE": cliente, "EQUIPAMENTO": produto, "VALOR_MENSAL": valor_mensal, "CUSTO_ORIGINAL": custo_total}])
-                conn.update(worksheet="Locacao", data=pd.concat([df_loc_antigo, nova_loc], ignore_index=True))
-
-                df_fluxo_antigo = conn.read(worksheet="Fluxo de Caixa").dropna(how='all')
-                df_vendas_antigo = conn.read(worksheet="Vendas").dropna(how='all')
+    # --- SEÇÃO 1: FORMULÁRIO DE CADASTRO ---
+    with st.expander("➕ Cadastrar Nova Locação (12 Meses)", expanded=True):
+        with st.form("form_locacao", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                data_ini = st.date_input("Data de Início", value=date.today())
+                clientes = sorted(df_cli["NOME REDUZIDO"].unique()) if not df_cli.empty else ["Nenhum"]
+                cliente_sel = st.selectbox("Selecione o Cliente", clientes)
                 
-                novas_vendas, novos_fluxos = [], []
-                for i in range(1, 13):
-                    venc = (data_ini + relativedelta(months=i-1)).replace(day=5)
-                    dt_s = venc.strftime("%d/%m/%Y")
-                    novos_fluxos.append({"DATA": dt_s, "TIPO": "ENTRADA", "DESCRICAO": f"LOCACAO - {produto}", "VALOR": valor_mensal, "PARCELA": f"{i}/12", "STATUS": "PREVISTO", "CLIENTE": cliente, "NF": "LOC"})
-                    novas_vendas.append({"NF": "LOC", "DATA": dt_s, "CLIENTE": cliente, "PRODUTO": produto, "CFOPS": "LOC", "TOTAL": valor_mensal, "COMPRAS": 0, "FORMA DE PAGAMENTO": "BOLETO/LOC", "QTD": 1, "VALOR UNIT": valor_mensal, "VENDEDOR": "SISTEMA", "OBS": f"Parc {i}/12", "CUSTO": 0, "MARGEM": valor_mensal})
-                
-                conn.update(worksheet="Fluxo de Caixa", data=pd.concat([df_fluxo_antigo, pd.DataFrame(novos_fluxos)], ignore_index=True).iloc[:, :8])
-                conn.update(worksheet="Vendas", data=pd.concat([df_vendas_antigo, pd.DataFrame(novas_vendas)], ignore_index=True).iloc[:, :14])
+                produtos = sorted(df_prod["NOME"].unique()) if not df_prod.empty else ["Nenhum"]
+                produto_sel = st.selectbox("Equipamento", produtos)
 
-                st.success("✅ Tudo gravado com sucesso!")
-                st.rerun() # Força a página a recarregar para atualizar a tabela abaixo
-            except Exception as e:
-                st.error(f"Erro ao salvar: {e}")
+            with c2:
+                vlr_mensal = st.number_input("Mensalidade (R$)", min_value=0.0, step=50.0)
+                # Busca custo automático
+                custo = 0.0
+                if not df_prod.empty and produto_sel != "Nenhum":
+                    res = df_prod.loc[df_prod["NOME"] == produto_sel, "CUSTO TOTAL"]
+                    if not res.empty: custo = float(res.values[0])
+                st.metric("Custo do Equipamento", f"R$ {custo:,.2f}")
 
-    # --- TABELA DE CONTROLE (FORA DO IF SUBMIT PARA APARECER SEMPRE) ---
+            if st.form_submit_button("✅ Finalizar e Gerar 12 Parcelas"):
+                try:
+                    # --- GRAVAÇÃO EM LOTE ---
+                    # 1. Registro em 'Locacao'
+                    df_l_old = conn.read(worksheet="Locacao").dropna(how='all')
+                    n_l = pd.DataFrame([{"DATA_INICIO": data_ini.strftime("%d/%m/%Y"), "CLIENTE": cliente_sel, 
+                                         "EQUIPAMENTO": produto_sel, "VALOR_MENSAL": vlr_mensal, "CUSTO_ORIGINAL": custo}])
+                    conn.update(worksheet="Locacao", data=pd.concat([df_l_old, n_l], ignore_index=True))
+
+                    # 2. Gerar 12 meses (Fluxo e Vendas)
+                    df_f_old = conn.read(worksheet="Fluxo de Caixa").dropna(how='all')
+                    df_v_old = conn.read(worksheet="Vendas").dropna(how='all')
+                    
+                    l_f, l_v = [], []
+                    for i in range(1, 13):
+                        venc = (data_ini + relativedelta(months=i-1)).replace(day=5)
+                        v_str = venc.strftime("%d/%m/%Y")
+                        
+                        l_f.append({"DATA": v_str, "TIPO": "ENTRADA", "DESCRICAO": f"MENSALIDADE {i}/12 - {produto_sel}",
+                                    "VALOR": vlr_mensal, "PARCELA": f"{i}/12", "STATUS": "PREVISTO", "CLIENTE": cliente_sel, "NF": "LOC"})
+                        
+                        l_v.append(["LOC", v_str, cliente_sel, produto_sel, "LOC", vlr_mensal, 0, "BOLETO/LOC", 1, vlr_mensal, "SISTEMA", f"Parc {i}/12", 0, vlr_mensal])
+
+                    # Update Final
+                    conn.update(worksheet="Fluxo de Caixa", data=pd.concat([df_f_old, pd.DataFrame(l_f)], ignore_index=True).iloc[:, :8])
+                    conn.update(worksheet="Vendas", data=pd.concat([df_v_old, pd.DataFrame(l_v, columns=df_v_old.columns[:14])], ignore_index=True).iloc[:, :14])
+                    
+                    st.success("Dados enviados! Atualizando painel...")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro Crítico: {e}")
+
+    # --- SEÇÃO 2: TABELA DE MONITORAMENTO (A QUE ESTAVA EM BRANCO) ---
     st.markdown("---")
-    st.subheader("📅 Próximos Reajustes (12ª Parcela)")
+    st.subheader("📊 Controle de Ativos e Reajustes")
     
-    # Lemos a aba Locacao novamente para garantir dados frescos
-    df_exibir = carregar_dados("Locacao")
+    df_view = carregar_dados_limpos("Locacao")
     
-    if not df_exibir.empty:
-        # Padroniza nomes de colunas para evitar o KeyError
-        df_exibir.columns = [str(c).strip().upper() for c in df_exibir.columns]
-        
-        if 'DATA_INICIO' in df_exibir.columns:
-            try:
-                # Converter datas com segurança
-                df_exibir['DATA_DT'] = pd.to_datetime(df_exibir['DATA_INICIO'], dayfirst=True, errors='coerce')
-                df_exibir = df_exibir.dropna(subset=['DATA_DT'])
-                
-                # Calcular 12ª parcela e dias restantes
-                df_exibir['DATA 12ª PARCELA'] = df_exibir['DATA_DT'].apply(lambda x: (x + relativedelta(months=11)).replace(day=5))
-                df_exibir['DIAS PARA REAJUSTE'] = (df_exibir['DATA 12ª PARCELA'] - pd.Timestamp(date.today())).dt.days
-                
-                # Criar DataFrame amigável para exibição
-                df_final = df_exibir.copy()
-                df_final['DATA 12ª PARCELA'] = df_final['DATA 12ª PARCELA'].dt.strftime('%d/%m/%Y')
-                
-                # Selecionar e renomear colunas
-                colunas_vistas = ['CLIENTE', 'EQUIPAMENTO', 'VALOR_MENSAL', 'DATA 12ª PARCELA', 'DIAS PARA REAJUSTE']
-                df_final = df_final[colunas_vistas].rename(columns={'EQUIPAMENTO': 'PRODUTO', 'VALOR_MENSAL': 'VALOR (R$)'})
+    if not df_view.empty:
+        try:
+            # Tenta converter a primeira coluna que parecer uma data
+            # (Caso 'DATA_INICIO' mude de nome por erro humano na planilha)
+            col_data = "DATA_INICIO" if "DATA_INICIO" in df_view.columns else df_view.columns[0]
+            
+            df_view['DT_OBJ'] = pd.to_datetime(df_view[col_data], dayfirst=True, errors='coerce')
+            df_view = df_view.dropna(subset=['DT_OBJ'])
 
-                # Exibir com cor de alerta
-                st.dataframe(
-                    df_final.style.applymap(lambda x: 'color: red; font-weight: bold' if isinstance(x, int) and x <= 30 else 'color: black', subset=['DIAS PARA REAJUSTE']),
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.warning(f"Erro ao processar cronograma: {e}")
-        else:
-            st.warning(f"Coluna 'DATA_INICIO' não encontrada. Colunas disponíveis: {list(df_exibir.columns)}")
-    else:
-        st.info("Nenhuma locação encontrada para monitoramento.")
+            # Cálculos de 12ª Parcela
+            df_view['VENC_12'] = df_view['DT_OBJ'].apply(lambda x: (x + relativedelta(months=11)).replace(day=5))
+            df_view['DIAS'] = (df_view['VENC_12'] - pd.Timestamp(date.today())).dt.days
+            
+            # Formatação de Exibição
+            df_final = df_view.copy()
+            df_final['12ª PARCELA'] = df_final['VENC_12'].dt.strftime('%d/%m/%Y')
+            
+            # Filtro de Colunas Úteis
+            cols_ok = [c for c in ['CLIENTE', 'EQUIPAMENTO', 'VALOR_MENSAL', '12ª PARCELA', 'DIAS'] if c in df_final.columns]
+            
+            # Estilização
+            def colorir_vencimento(val):
+                if isinstance(val, int) and val <= 30: return 'background-color: #ffcccc; color: red; font-weight: bold'
+                return ''
+
+            st.dataframe(
+                df_final[cols_ok].style.applymap(colorir_vencimento, subset=['DIAS'] if 'DIAS' in cols_ok else []),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            st.info("💡 Contratos em **vermelho** vencem o ciclo de 12 meses em menos de 30 dias.")
+
+        except Exception as e:
+            st.warning
