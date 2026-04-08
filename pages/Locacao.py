@@ -66,10 +66,15 @@ def aba_gestao_locacao():
                 
                 novas_vendas = []
                 novos_fluxos = []
+                # Definimos a data de corte: 01 de Abril de 2026
+                data_corte = date(2026, 4, 1)
 
                 for i in range(1, 13):
                     vencimento = (data_ini + relativedelta(months=i-1)).replace(day=5)
                     dt_str = vencimento.strftime("%d/%m/%Y")
+                    # SÓ PROCESSA SE O VENCIMENTO FOR A PARTIR DE ABRIL/2026
+                    if vencimento >= data_corte:
+                        dt_str = vencimento.strftime("%d/%m/%Y")
                     
                     novos_fluxos.append({
                         "DATA": dt_str, "TIPO": "ENTRADA", "DESCRICAO": f"LOCACAO - {produto}",
