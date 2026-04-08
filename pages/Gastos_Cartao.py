@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
-from datetime import datetime, date  # <--- Adicionado 'date'
-from dateutil.relativedelta import relativedelta # <--- Adicionado para cálculos de meses
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 import os
 
 # 1. CONFIGURAÇÕES INICIAIS E PASTAS
@@ -10,10 +10,12 @@ if 'logado' not in st.session_state or not st.session_state.logado:
     st.error("🚫 Acesso negado! Faça login na Home.")
     st.stop()
 
-st.set_page_config(page_title="Gastos Cartão | Filtros DC", layout="wide")
+# Configuração de página deve ser a primeira coisa após os imports
+# st.set_page_config(page_title="Gastos Cartão | Filtros DC", layout="wide") # Se já houver no main.py, comente esta linha
+
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 2. FUNÇÃO DE CARREGAMENTO E CÁLCULO DE SALDO ---
+# --- 2. FUNÇÃO DE CARREGAMENTO ---
 def aba_gastos_cartao():
     st.subheader("💳 Registro de Gastos no Cartão - Filtros DC")
     
@@ -34,7 +36,7 @@ def aba_gastos_cartao():
         if btn_salvar:
             if descricao and valor > 0:
                 try:
-                    # LEITURA DAS ABAS PARA APPEND (Garante que não sobrescreve)
+                    # LEITURA DAS ABAS PARA APPEND
                     df_cartao_antigo = conn.read(worksheet="Gastos Cartao", ttl=0).dropna(how='all')
                     df_fluxo_antigo = conn.read(worksheet="Fluxo de Caixa", ttl=0).dropna(how='all')
 
@@ -58,10 +60,9 @@ def aba_gastos_cartao():
                         "NF": "FATURA"
                     }])
 
-                    # SALVAMENTO (Concatena o antigo com o novo)
+                    # SALVAMENTO
                     conn.update(worksheet="Gastos Cartao", data=pd.concat([df_cartao_antigo, nova_compra], ignore_index=True))
                     
-                    # No Fluxo, garantimos que as colunas batam com as 8 colunas oficiais
                     df_fluxo_final = pd.concat([df_fluxo_antigo, novo_fluxo], ignore_index=True).iloc[:, :8]
                     conn.update(worksheet="Fluxo de Caixa", data=df_fluxo_final)
                     
@@ -76,11 +77,17 @@ def aba_gastos_cartao():
     st.markdown("---")
     st.subheader("📋 Últimos Lançamentos no Cartão")
     
-    df_lista_cartao = conn.read(worksheet="Gastos Cartao", ttl=0)
-    
-    if df_lista_cartao is not None and not df_lista_cartao.empty:
-        # Limpeza para exibição
-        df_lista_cartao = df_lista_cartao.dropna(how='all')
-        st.dataframe(df_lista_cartao, use_container_width=True, hide_index=True)
-    else:
-        st.info("Nenhum gasto registrado na aba 'Gastos Cartao'.")
+    try:
+        df_lista_cartao = conn.read(worksheet="Gastos Cartao", ttl=0)
+        
+        if df_lista_cartao is not None and not df_lista_cartao.empty:
+            df_lista_cartao = df_lista_cartao.dropna(how='all')
+            st.dataframe(df_lista_cartao, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum gasto registrado na aba 'Gastos Cartao'.")
+    except:
+        st.error("Aba 'Gastos Cartao' não encontrada na planilha.")
+
+# --- 3. EXECUÇÃO DA FUNÇÃO ---
+# ESTA LINHA É O QUE FAZ O CÓDIGO APARECER
+aba_gastos_cartao()
