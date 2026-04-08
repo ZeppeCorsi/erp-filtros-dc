@@ -5,6 +5,12 @@ from streamlit_folium import st_folium
 from streamlit_gsheets import GSheetsConnection
 from geopy.distance import geodesic
 
+# SEGURANÇA
+if 'logado' not in st.session_state or not st.session_state.logado:
+    st.error("🚫 Acesso negado! Faça login na Home.")
+    st.stop()
+
+
 # 1. CONFIGURAÇÕES E DADOS EXATOS DA FILTROS DC
 ID_PLANILHA = "1e4OxEVcNSdvi0NehhTgt0zvWK9ncAgGQa1E6WAEgFE8"
 URL_LEITURA = f"https://docs.google.com/spreadsheets/d/{ID_PLANILHA}/export?format=csv&gid=0"
