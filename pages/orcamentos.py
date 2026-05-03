@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
@@ -6,154 +7,256 @@ from fpdf import FPDF
 import io
 from datetime import datetime
 
+# Dicionário de palavras portuguesas sem acento → com acento correto
+_ACENTOS_PT = {
+    # Preposições e conjunções comuns
+    "apos": "após", "ate": "até", "alem": "além",
+    "atraves": "através", "entao": "então",
+    # Verbos / substantivos gerais
+    "acao": "ação", "acoes": "ações",
+    "atencao": "atenção", "atencoes": "atenções",
+    "cancelamento": "cancelamento",
+    "composicao": "composição",
+    "condicao": "condição", "condicoes": "condições",
+    "confirmacao": "confirmação",
+    "conexao": "conexão", "conexoes": "conexões",
+    "corrosao": "corrosão",
+    "dimensao": "dimensão", "dimensoes": "dimensões",
+    "especificacao": "especificação", "especificacoes": "especificações",
+    "excecao": "exceção",
+    "fabricacao": "fabricação",
+    "filtracao": "filtração",
+    "funcao": "função", "funcoes": "funções",
+    "gestao": "gestão",
+    "informacao": "informação", "informacoes": "informações",
+    "manutencao": "manutenção",
+    "numero": "número", "numeros": "números",
+    "operacao": "operação", "operacoes": "operações",
+    "opcao": "opção", "opcoes": "opções",
+    "posicao": "posição",
+    "pressao": "pressão", "pressoes": "pressões",
+    "protecao": "proteção",
+    "reducao": "redução",
+    "relacao": "relação",
+    "retencao": "retenção",
+    "selecao": "seleção",
+    "servico": "serviço", "servicos": "serviços",
+    "situacao": "situação",
+    "solucao": "solução", "solucoes": "soluções",
+    "substituicao": "substituição",
+    "transmissao": "transmissão",
+    "utilizacao": "utilização",
+    "vazao": "vazão",
+    "vedacao": "vedação",
+    "versao": "versão",
+    # Adjetivos e termos técnicos
+    "carcaca": "carcaça", "carcacas": "carcaças",
+    "caracteristica": "característica", "caracteristicas": "características",
+    "compativel": "compatível", "compativeis": "compatíveis",
+    "diametro": "diâmetro", "diametros": "diâmetros",
+    "eficiencia": "eficiência",
+    "hidraulico": "hidráulico", "hidraulica": "hidráulica",
+    "hidraulicos": "hidráulicos", "hidraulicas": "hidráulicas",
+    "maximo": "máximo", "maxima": "máxima", "max": "máx",
+    "minimo": "mínimo", "minima": "mínima",
+    "micron": "mícron", "microns": "mícrons",
+    "oleo": "óleo", "oleos": "óleos",
+    "pneumatico": "pneumático", "pneumatica": "pneumática",
+    "pneumaticos": "pneumáticos", "pneumaticas": "pneumáticas",
+    "tecnico": "técnico", "tecnica": "técnica",
+    "tecnicos": "técnicos", "tecnicas": "técnicas",
+    "uteis": "úteis",
+    "valvula": "válvula", "valvulas": "válvulas",
+    # Termos comerciais
+    "comercio": "comércio",
+    "orcamento": "orçamento", "orcamentos": "orçamentos",
+    "proposta": "proposta",
+    "prazo": "prazo",
+}
+
+def _corrigir_acentos(texto):
+    """Aplica acentos ortográficos em texto português digitado sem acentuação."""
+    if not texto:
+        return texto
+    tokens = re.split(r"(\W+)", str(texto))
+    resultado = []
+    for token in tokens:
+        corrigida = _ACENTOS_PT.get(token.lower())
+        if corrigida:
+            if token.isupper():
+                resultado.append(corrigida.upper())
+            elif token[0].isupper():
+                resultado.append(corrigida[0].upper() + corrigida[1:])
+            else:
+                resultado.append(corrigida)
+        else:
+            resultado.append(token)
+    return "".join(resultado)
+
 def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato, email, tel):
+    # Corrige acentos em todos os campos dinâmicos antes de renderizar
+    cliente  = _corrigir_acentos(cliente)
+    contato  = _corrigir_acentos(contato)
+    obs      = _corrigir_acentos(obs)
+    vendedor = _corrigir_acentos(vendedor)
+    itens = [
+        {**it, "ITEM": _corrigir_acentos(it["ITEM"]), "DETALHES": _corrigir_acentos(it["DETALHES"])}
+        for it in itens
+    ]
+
+    AZUL    = (26, 58, 107)
+    BRANCO  = (255, 255, 255)
+    CINZA   = (245, 245, 245)
+    ALT_ROW = (235, 242, 255)
+    TEXTO   = (40, 40, 40)
+
     pdf = FPDF()
     pdf.add_page()
+    pdf.c_margin = 2
+    pdf.add_font("Arial", style="",  fname="C:\\Windows\\Fonts\\arial.ttf")
+    pdf.add_font("Arial", style="B", fname="C:\\Windows\\Fonts\\arialbd.ttf")
 
-  
-    # Função para evitar erro de caracteres (Hífen longo, etc)
-    
-    #def clean(txt):
-        #if not txt: return ""
-       # return str(txt).replace('—', '-').replace('–', '-').replace('“', '"').replace('”', '"')
+    def fmt_brl(val):
+        return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-    # --- 1. Função de limpeza (Coloque isso no topo da função do PDF ou antes de usar) ---
-    def limpar_para_pdf(texto):
-        if not texto: return ""
-        # Troca o símbolo R$ por RS, remove acentos e caracteres especiais que travam a Helvetica
-        import unicodedata
-        nfkd = unicodedata.normalize('NFKD', str(texto))
-        texto_limpo = "".join([c for c in nfkd if not unicodedata.combining(c)])
-        return texto_limpo.replace("R$", "RS").encode('ascii', 'ignore').decode('ascii')
-    def clean(txt):
-        return limpar_para_pdf(txt)
-
-    # --- 2. Aplicação no Total ---
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 11)
-
-    # Formatamos o valor (1.350,00)
-    valor_formatado = f"RS {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-    #pdf.cell(147, 10, limpar_para_pdf("VALOR TOTAL DA PROPOSTA:"), align="R")
-    #pdf.cell(43, 10, valor_formatado, align="R", ln=True)
-
-    # --- 3. Aplicação nas Condições Gerais ---
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 10)
-    #pdf.cell(0, 5, limpar_para_pdf("CONDICOES GERAIS:"), ln=True)
-
-    pdf.set_font("Helvetica", "", 9)
-    # Aqui limpamos as observações para o PDF não travar
-    #pdf.multi_cell(0, 5, limpar_para_pdf(obs))
-
-
-    # --- 1. CABEÇALHO ---
+    # === CABEÇALHO ===
     try:
         pdf.image("LOGO Fundo Branco Puro.png", x=10, y=8, w=50)
     except:
-        pdf.set_font("Helvetica", "B", 15)
-        pdf.text(10, 15, "FILTROS DC")
+        pdf.set_font("Arial", "B", 15)
+        pdf.set_text_color(*AZUL)
+        pdf.text(10, 18, "FILTROS DC")
 
-    pdf.set_font("Helvetica", "", 8)
-    pdf.set_xy(130, 10)
-    end_dc = "Filtros DC Comercio Ltda.\nCNPJ 61.696.514/0001-18\nRua Nicolau Zarvos, 161 - Jabaquara\n(11) 2592.0025 | www.masterfilter.com.br"
-    pdf.multi_cell(70, 4, clean(end_dc), align="R")
-    
-    pdf.ln(15)
-    pdf.line(10, 32, 200, 32)
-
-    # --- 2. DADOS DO CLIENTE ---
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 5, f"DATA: {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
-    
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 7, f"Aos cuidados: {clean(contato).upper()}", ln=True)
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 6, f"Cliente: {clean(cliente)}", ln=True)
-    pdf.cell(0, 6, f"E-mail: {clean(email)} | Tel: {clean(tel)}", ln=True)
-    
-   
-    # --- NOVO: TEXTO DE APRESENTAÇÃO (36 ANOS) ---
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "", 10)
-    texto_intro = (
-        "Com 36 anos de experiência no mercado de filtragem industrial, a Filtros DC consolida-se pela "
-        "excelência técnica e compromisso com a qualidade. Apresentamos abaixo nossa proposta comercial "
-        "detalhada, desenvolvida sob medida para atender às necessidades específicas de sua operação."
+    pdf.set_font("Arial", "", 8)
+    pdf.set_text_color(80, 80, 80)
+    pdf.set_xy(115, 8)
+    pdf.multi_cell(85, 4.5,
+        "Filtros DC Comércio Ltda.\nCNPJ 61.696.514/0001-18\n"
+        "Rua Nicolau Zarvos, 161 - Jabaquara\n(11) 2592.0025 | www.masterfilter.com.br",
+        align="R"
     )
-    pdf.multi_cell(0, 5, clean(texto_intro), align="J") # "J" para justificado
-    pdf.ln(5)
 
-         # --- TÍTULO DA PROPOSTA ---
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.set_fill_color(230, 230, 230)
-    pdf.cell(0, 10, "PROPOSTA COMERCIAL", ln=True, align="C", fill=True)
+    pdf.set_draw_color(*AZUL)
+    pdf.set_line_width(0.8)
+    pdf.line(10, 33, 200, 33)
+    pdf.set_line_width(0.2)
 
-    # --- 3. TABELA DE PRODUTOS (Recuperada e Ampliada) ---
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(130, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
-    pdf.cell(10, 8, "Qtd", border=1, align="C", fill=True)
-    pdf.cell(25, 8, "Unitário", border=1, align="C", fill=True)
-    pdf.cell(25, 8, "Total", border=1, align="C", fill=True)
+    # === DADOS DO CLIENTE ===
+    pdf.set_xy(10, 37)
+    pdf.set_font("Arial", "B", 9)
+    pdf.set_text_color(*AZUL)
+    pdf.cell(0, 5, f"DATA: {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
+
+    box_y = pdf.get_y() + 2
+    pdf.set_fill_color(*CINZA)
+    pdf.set_draw_color(210, 215, 225)
+    pdf.set_line_width(0.3)
+    pdf.rect(10, box_y, 190, 21, style="DF")
+
+    pdf.set_xy(14, box_y + 3)
+    pdf.set_font("Arial", "B", 11)
+    pdf.set_text_color(*AZUL)
+    pdf.cell(0, 6, f"Aos cuidados de: {contato.upper()}", ln=True)
+
+    pdf.set_x(14)
+    pdf.set_font("Arial", "", 9)
+    pdf.set_text_color(*TEXTO)
+    pdf.cell(0, 5, f"Cliente: {cliente}", ln=True)
+
+    pdf.set_x(14)
+    pdf.cell(0, 5, f"E-mail: {email}   |   Tel: {tel}", ln=True)
+
+    # === APRESENTAÇÃO ===
+    pdf.ln(6)
+    pdf.set_font("Arial", "", 9.5)
+    pdf.set_text_color(*TEXTO)
+    pdf.multi_cell(0, 5.5,
+        "Com 36 anos de experiência no mercado de filtragem industrial, a Filtros DC consolida-se "
+        "pela excelência técnica e compromisso com a qualidade. Apresentamos abaixo nossa proposta "
+        "comercial detalhada, desenvolvida sob medida para atender às necessidades específicas de "
+        "sua operação.",
+        align="J"
+    )
+
+    # === TÍTULO DA PROPOSTA ===
+    pdf.ln(4)
+    pdf.set_fill_color(*AZUL)
+    pdf.set_text_color(*BRANCO)
+    pdf.set_font("Arial", "B", 13)
+    pdf.cell(0, 11, "PROPOSTA COMERCIAL", ln=True, fill=True, align="C")
+
+    # === TABELA - CABEÇALHO ===
+    pdf.set_fill_color(*AZUL)
+    pdf.set_text_color(*BRANCO)
+    pdf.set_font("Arial", "B", 9)
+    pdf.set_draw_color(180, 195, 220)
+    pdf.cell(110, 8, "Descrição / Especificações Técnicas", border=1, fill=True)
+    pdf.cell(15, 8, "Qtd", border=1, align="C", fill=True)
+    pdf.cell(33, 8, "Unitário", border=1, align="C", fill=True)
+    pdf.cell(32, 8, "Total", border=1, align="C", fill=True)
     pdf.ln()
 
-    pdf.set_font("Helvetica", "", 7)
-    for it in itens:
-        x_start = pdf.get_x()
-        y_start = pdf.get_y()
-        
-        # Descrição com MultiCell para as especificações técnicas
-        pdf.multi_cell(130, 5, clean(f"{it['ITEM']}\n{it['DETALHES']}"), border=1)
-        y_end = pdf.get_y()
-        h_linha = y_end - y_start
-        
-        # Colunas laterais
-        pdf.set_xy(x_start + 130, y_start)
-        pdf.cell(10, h_linha, str(it['QTD']), border=1, align="C")
-        
-        u = f"R$ {it['UNIT']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-        t = f"R$ {it['TOTAL']:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-        
-        pdf.cell(25, h_linha, u, border=1, align="R")
-        pdf.cell(25, h_linha, t, border=1, align="R")
-        pdf.ln()
+    # === TABELA - LINHAS ===
+    pdf.set_text_color(*TEXTO)
+    for i, it in enumerate(itens):
+        x0 = pdf.get_x()
+        y0 = pdf.get_y()
+        row_fill = ALT_ROW if i % 2 else BRANCO
+        pdf.set_fill_color(*row_fill)
+        pdf.set_font("Arial", "", 9)
 
-   # --- 4. TOTAL E CONDIÇÕES GERAIS ---
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 11)
-    
-    # Formatamos o valor e garantimos que a string seja compatível com a fonte
-    tot_br = f"R$ {total:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-    
-    # Tratamento para evitar o erro 'latin-1' no valor total
-    tot_safe = tot_br.encode('latin-1', 'replace').decode('latin-1')
-    
-    pdf.cell(147, 10, "VALOR TOTAL DA PROPOSTA:", align="R")
-    pdf.cell(43, 10, tot_safe, align="R", ln=True)
-    
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 5, "CONDIÇÕES GERAIS:", ln=True)
-    
-    pdf.set_font("Helvetica", "", 9)
-    
-    # Tratamento para evitar erro nas observações (acentos e caracteres especiais)
-    obs_limpa = clean(obs).encode('latin-1', 'replace').decode('latin-1')
-    pdf.multi_cell(0, 5, obs_limpa)
-    # --- 5. ASSINATURA ---
-    pdf.ln(10)
+        linha = f"**{it['ITEM']}**"
+        if it['DETALHES']:
+            linha += f"\n{it['DETALHES']}"
+
+        pdf.multi_cell(110, 5, linha, border=1, fill=True, markdown=True)
+        y1 = pdf.get_y()
+        h = y1 - y0
+
+        pdf.set_xy(x0 + 110, y0)
+        pdf.set_font("Arial", "", 9)
+        pdf.set_fill_color(*row_fill)
+        pdf.cell(15, h, str(it['QTD']), border=1, align="C", fill=True)
+        pdf.cell(33, h, fmt_brl(it['UNIT']), border=1, align="R", fill=True)
+        pdf.cell(32, h, fmt_brl(it['TOTAL']), border=1, align="R", fill=True)
+        pdf.set_xy(x0, y1)
+
+    # === VALOR TOTAL ===
+    pdf.ln(4)
+    pdf.set_draw_color(*AZUL)
+    pdf.set_line_width(0.5)
+    pdf.set_fill_color(*CINZA)
+    pdf.set_text_color(*AZUL)
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(158, 10, "VALOR TOTAL DA PROPOSTA:", align="R", fill=True, border="TBL")
+    pdf.cell(32, 10, fmt_brl(total), align="R", fill=True, border="TBR", ln=True)
+    pdf.set_line_width(0.2)
+
+    # === CONDIÇÕES GERAIS ===
+    pdf.ln(6)
+    pdf.set_fill_color(*CINZA)
+    pdf.set_draw_color(210, 215, 225)
+    pdf.set_line_width(0.3)
+    pdf.set_text_color(*AZUL)
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 7, "CONDIÇÕES GERAIS:", ln=True, fill=True, border=1)
+
+    pdf.ln(2)
+    pdf.set_font("Arial", "", 9)
+    pdf.set_text_color(*TEXTO)
+    pdf.multi_cell(0, 5, obs)
+
+    # === ASSINATURA ===
+    pdf.ln(8)
     try:
-        # Centralizando a imagem da assinatura
-        pdf.image("Assinatura Chiodo.jpg", x=70, w=65) 
+        pdf.image("pages/Assinatura Chiodo.jpg", x=70, w=65)
     except:
         pdf.ln(10)
-        pdf.cell(0, 5, "________________________________________________", ln=True, align="C")
-    
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 5, f"Vendedor: {clean(vendedor)} - Filtros DC", ln=True, align="C")
+        pdf.set_draw_color(*AZUL)
+        pdf.set_line_width(0.4)
+        pdf.line(65, pdf.get_y(), 145, pdf.get_y())
+        pdf.ln(2)
+
 
     return pdf.output()
 
@@ -476,8 +579,6 @@ if st.session_state.cesta_orc:
             use_container_width=True
         )
 
-    except Exception as e:
-        st.error(f"Erro ao gerar visualização do PDF: {e}")
     except Exception as e:
         st.error(f"Erro ao gerar visualização do PDF: {e}")
 
