@@ -10,15 +10,44 @@ import io
 from datetime import datetime
 
 def _fonte_ttf(bold=False):
-    """Retorna o caminho da fonte TTF Unicode correta para o sistema atual."""
+    """Resolve a fonte TTF Unicode com múltiplos fallbacks (Windows e Linux/Cloud)."""
+    nome_arial  = "arialbd.ttf"       if bold else "arial.ttf"
+    nome_dejavu = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+
+    candidatos = []
+
+    # 1. Pasta fonts/ na raiz do projeto (arial local ou dejavu baixado)
+    try:
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidatos += [
+            os.path.join(raiz, "fonts", nome_arial),
+            os.path.join(raiz, "fonts", nome_dejavu),
+        ]
+    except Exception:
+        pass
+
+    # 2. Windows — diretório de fontes do sistema
     if sys.platform == "win32":
-        base = r"C:\Windows\Fonts"
-        nome = "arialbd.ttf" if bold else "arial.ttf"
-    else:
-        # Linux (Streamlit Cloud / Ubuntu) — DejaVu instalado via packages.txt
-        base = "/usr/share/fonts/truetype/dejavu"
-        nome = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
-    return os.path.join(base, nome)
+        candidatos += [
+            os.path.join(r"C:\Windows\Fonts", nome_arial),
+            os.path.join(r"C:\Windows\Fonts", nome_dejavu),
+        ]
+
+    # 3. Linux / Streamlit Cloud — DejaVu instalado via packages.txt
+    candidatos += [
+        f"/usr/share/fonts/truetype/dejavu/{nome_dejavu}",
+        f"/usr/share/fonts/dejavu/{nome_dejavu}",
+        f"/usr/share/fonts/truetype/ttf-dejavu/{nome_dejavu}",
+    ]
+
+    for caminho in candidatos:
+        if os.path.isfile(caminho):
+            return caminho
+
+    raise FileNotFoundError(
+        f"Fonte Unicode não encontrada. Instale 'fonts-dejavu-core' (Linux) "
+        f"ou copie arial.ttf para a pasta fonts/ do projeto."
+    )
 
 # Dicionário de palavras portuguesas sem acento → com acento correto
 _ACENTOS_PT = {
@@ -133,8 +162,9 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
         return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
     # === CABEÇALHO ===
+    _here = os.path.dirname(os.path.abspath(__file__))
     try:
-        pdf.image("LOGO Fundo Branco Puro.png", x=10, y=8, w=50)
+        pdf.image(os.path.join(_here, "LOGO Fundo Branco Puro.png"), x=10, y=8, w=50)
     except:
         pdf.set_font("Arial", "B", 15)
         pdf.set_text_color(*AZUL)
@@ -262,7 +292,7 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     # === ASSINATURA ===
     pdf.ln(8)
     try:
-        pdf.image("pages/Assinatura Chiodo.jpg", x=70, w=65)
+        pdf.image(os.path.join(_here, "Assinatura Chiodo.jpg"), x=70, w=65)
     except:
         pdf.ln(10)
         pdf.set_draw_color(*AZUL)
@@ -327,54 +357,75 @@ else:
 if 'num_orc_atual' not in st.session_state:
     st.session_state.num_orc_atual = prox_num
 
-# --- INÍCIO DO BLOCO DE BUSCA E EDIÇÃO ---
-with st.expander("🔍 BUSCAR ORÇAMENTO ANTIGO PARA EDITAR", expanded=False):
-    if not df_hist_base.empty:
-        # Filtramos para mostrar apenas o que faz sentido editar
-        df_editavel = df_hist_base[df_hist_base['STATUS'].isin(['ABERTO', 'PERDIDO', 'CANCELADO'])]
-        
-        df_editavel['OPCAO'] = "Nº " + df_editavel['NUMERO'].astype(str) + " | " + df_editavel['CLIENTE'].astype(str) + " (" + df_editavel['STATUS'] + ")"
-        lista_orc = sorted(df_editavel['OPCAO'].unique().tolist(), reverse=True)
-        orc_escolhido = st.selectbox("Selecione um orçamento salvo:", [""] + lista_orc)
-        
-if orc_escolhido != "":
-        if st.button("📂 CARREGAR DADOS NO FORMULÁRIO", use_container_width=True):
-            # 1. Tratamento do Número (Tudo dentro do 1º IF do botão)
-            num_sel = orc_escolhido.split(" | ")[0].replace("Nº ", "")
-            st.session_state.num_orc_atual = int(float(num_sel)) 
-        
-            # 2. Localiza o orçamento
-            itens_salvos = df_hist_base[df_hist_base['NUMERO'].astype(str).str.contains(num_sel)]
-        
-            if not itens_salvos.empty:
-                dados_cabecalho = itens_salvos.iloc[0]
-            
-                # 3. Carrega dados do orçamento para o session_state
-                st.session_state.cliente_selecionado = dados_cabecalho['CLIENTE']
-                st.session_state.contato_orc = str(dados_cabecalho.get('CONTATO', ""))
-                st.session_state.email_orc = str(dados_cabecalho.get('EMAIL', ""))
-                st.session_state.tel_orc = str(dados_cabecalho.get('TELEFONE', ""))
-            
-                # 4. Sincroniza o índice do Selectbox do Cliente
-                if 'NOME REDUZIDO' in df_cli.columns:
-                    lista_nomes = sorted(df_cli['NOME REDUZIDO'].astype(str).unique().tolist())
-                    if dados_cabecalho['CLIENTE'] in lista_nomes:
-                        st.session_state.idx_o = lista_nomes.index(dados_cabecalho['CLIENTE'])
+# --- BUSCA E EDIÇÃO DE ORÇAMENTOS ---
+with st.expander("🔍 BUSCAR / EDITAR ORÇAMENTO EXISTENTE",
+                 expanded=bool(st.session_state.get('editando_orc'))):
 
-                # 5. Carrega a cesta de itens (Também dentro do IF do botão)
-                st.session_state.cesta_orc = []
-                for _, linha in itens_salvos.iterrows():
-                    st.session_state.cesta_orc.append({
-                        "ITEM": linha["PRODUTO"],
-                        "DETALHES": str(linha["DETALHES"]).upper() if str(linha["DETALHES"]) != 'nan' else "",
-                        "QTD": int(linha["QT"]),
-                        "UNIT": float(linha["VALOR UNITARIO"]),
-                        "TOTAL": float(linha["VALOR TOTAL"])
-                    })
-                
-                # 6. Finalização e Recarregamento
-                st.success(f"Orçamento Nº {num_sel} carregado!")
-                st.rerun()
+    if df_hist_base.empty:
+        st.info("Nenhum orçamento cadastrado ainda.")
+    else:
+        col_f, col_s = st.columns([3, 1])
+        busca_orc   = col_f.text_input("Filtrar por cliente ou nº:", placeholder="Ex: HOTEL  ou  42")
+        status_orc  = col_s.selectbox("Status:", ["TODOS", "ABERTO", "PERDIDO", "CANCELADO"])
+
+        df_edit = df_hist_base[df_hist_base['STATUS'].isin(
+            ['ABERTO', 'PERDIDO', 'CANCELADO'] if status_orc == "TODOS" else [status_orc]
+        )].copy()
+
+        if busca_orc:
+            mask = (df_edit['CLIENTE'].astype(str).str.contains(busca_orc.upper(), na=False) |
+                    df_edit['NUMERO'].astype(str).str.contains(busca_orc, na=False))
+            df_edit = df_edit[mask]
+
+        df_uniq = df_edit.drop_duplicates(subset=['NUMERO'])
+        df_uniq['OPCAO'] = ("Nº " + df_uniq['NUMERO'].astype(str) +
+                            " | " + df_uniq['CLIENTE'].astype(str) +
+                            " | " + df_uniq.get('DATA', pd.Series([""] * len(df_uniq))).astype(str) +
+                            " (" + df_uniq['STATUS'] + ")")
+        lista_orc = sorted(df_uniq['OPCAO'].tolist(), reverse=True)
+
+        if not lista_orc:
+            st.warning("Nenhum orçamento encontrado com esses filtros.")
+        else:
+            orc_sel = st.selectbox("Selecione o orçamento:", [""] + lista_orc, key="sel_edit_orc")
+
+            if orc_sel:
+                num_prev = orc_sel.split(" | ")[0].replace("Nº ", "").strip()
+                df_prev  = df_hist_base[df_hist_base['NUMERO'].astype(str).str.strip() == num_prev]
+                if not df_prev.empty:
+                    cab  = df_prev.iloc[0]
+                    tot  = pd.to_numeric(df_prev['VALOR TOTAL'], errors='coerce').sum()
+                    itns = " | ".join(df_prev['PRODUTO'].dropna().astype(str).tolist())
+                    st.markdown(f"**Cliente:** {cab['CLIENTE']}  •  **Data:** {cab.get('DATA','')}  •  "
+                                f"**Total:** R$ {tot:,.2f}".replace(',','X').replace('.',',').replace('X','.'))
+                    st.caption(f"Itens: {itns}")
+
+                if st.button("📂 CARREGAR PARA EDIÇÃO", use_container_width=True, type="primary"):
+                    num_sel    = orc_sel.split(" | ")[0].replace("Nº ", "").strip()
+                    itens_salvos = df_hist_base[df_hist_base['NUMERO'].astype(str).str.strip() == num_sel]
+                    if not itens_salvos.empty:
+                        cab = itens_salvos.iloc[0]
+                        st.session_state.num_orc_atual  = int(float(num_sel))
+                        st.session_state.contato_orc    = str(cab.get('CONTATO', ""))
+                        st.session_state.email_orc      = str(cab.get('EMAIL', ""))
+                        st.session_state.tel_orc        = str(cab.get('TELEFONE', ""))
+                        if 'NOME REDUZIDO' in df_cli.columns:
+                            nomes = sorted(df_cli['NOME REDUZIDO'].astype(str).unique().tolist())
+                            if cab['CLIENTE'] in nomes:
+                                st.session_state.idx_o = nomes.index(cab['CLIENTE'])
+                        st.session_state.cesta_orc = [
+                            {
+                                "ITEM":    linha["PRODUTO"],
+                                "DETALHES": str(linha["DETALHES"]).upper() if str(linha["DETALHES"]) != 'nan' else "",
+                                "QTD":     int(linha["QT"]),
+                                "UNIT":    float(linha["VALOR UNITARIO"]),
+                                "TOTAL":   float(linha["VALOR TOTAL"]),
+                            }
+                            for _, linha in itens_salvos.iterrows()
+                        ]
+                        st.session_state.editando_orc = {'NUMERO': num_sel}
+                        st.success(f"✅ Orçamento Nº {num_sel} carregado para edição!")
+                        st.rerun()
 
 st.info(f"📍 **ORÇAMENTO ATUAL: Nº {st.session_state.num_orc_atual}**")
 
