@@ -1,4 +1,6 @@
 import re
+import os
+import sys
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
@@ -6,6 +8,17 @@ from datetime import datetime
 from fpdf import FPDF
 import io
 from datetime import datetime
+
+def _fonte_ttf(bold=False):
+    """Retorna o caminho da fonte TTF Unicode correta para o sistema atual."""
+    if sys.platform == "win32":
+        base = r"C:\Windows\Fonts"
+        nome = "arialbd.ttf" if bold else "arial.ttf"
+    else:
+        # Linux (Streamlit Cloud / Ubuntu) — DejaVu instalado via packages.txt
+        base = "/usr/share/fonts/truetype/dejavu"
+        nome = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    return os.path.join(base, nome)
 
 # Dicionário de palavras portuguesas sem acento → com acento correto
 _ACENTOS_PT = {
@@ -113,8 +126,8 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
     pdf = FPDF()
     pdf.add_page()
     pdf.c_margin = 2
-    pdf.add_font("Arial", style="",  fname="C:\\Windows\\Fonts\\arial.ttf")
-    pdf.add_font("Arial", style="B", fname="C:\\Windows\\Fonts\\arialbd.ttf")
+    pdf.add_font("Arial", style="",  fname=_fonte_ttf(bold=False))
+    pdf.add_font("Arial", style="B", fname=_fonte_ttf(bold=True))
 
     def fmt_brl(val):
         return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
