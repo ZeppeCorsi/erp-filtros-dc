@@ -163,9 +163,17 @@ def gerar_pdf_orcamento(cliente, validade, itens, total, obs, vendedor, contato,
 
     # === CABEÇALHO ===
     _here = os.path.dirname(os.path.abspath(__file__))
-    try:
-        pdf.image(os.path.join(_here, "LOGO Fundo Branco Puro.png"), x=10, y=8, w=50)
-    except:
+    _logo_ok = False
+    for _nome_logo in ["LOGO Fundo Branco Puro.png", "LOGO Horizontal.jpg"]:
+        _lp = os.path.join(_here, _nome_logo)
+        if os.path.isfile(_lp):
+            try:
+                pdf.image(_lp, x=10, y=8, w=50)
+                _logo_ok = True
+            except:
+                pass
+            break
+    if not _logo_ok:
         pdf.set_font("Arial", "B", 15)
         pdf.set_text_color(*AZUL)
         pdf.text(10, 18, "FILTROS DC")
